@@ -87,12 +87,20 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
   verify, and finished in 3 turns for $0.011 — the agentic path works
   end-to-end.
 
-## To go live after cloning
+- **2026-07-29** — Published as **github.com/y-a-v-a/hylon-agent** and marked
+  as a GitHub **template repository**: this repo is a blueprint, meant to be
+  copied ("Use this template") or forked before use — the agent's works are
+  committed to git, and they belong in the operator's own repo. `git.push`
+  ships as `false` so a fresh copy never pushes works at the blueprint.
 
+## To go live after copying the template
+
+0. On GitHub: **Use this template** (or fork) → your own repo, then clone that.
 1. `cp .env.example .env` → set `OPENROUTER_API_KEY`.
 2. `cp identity/DNA.template.md identity/DNA.md` → write your DNA (keep §8 in
    sync with `rubric` in `agent.config.json`, or edit both).
 3. Optional: `identity/catalogue.seed.json` + `npm run seed`.
-4. Pick models in `agent.config.json` (`models.generator` ≠ `models.jury` vendor).
+4. Pick models in `agent.config.json` (`models.generator` ≠ `models.jury`
+   vendor), and set `git.push: true` once you want candidates pushed.
 5. `npm run once` to test a cycle; `npm run dashboard` to gate; `ops/DAEMON.md`
    to go autonomous; `ops/DEPLOY.md` to publish.

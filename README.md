@@ -7,8 +7,14 @@ approve.**
 hylon is the generic extraction of [vana](https://github.com/y-a-v-a/vana) —
 the *process* without the person. The harness encodes **no taste of its own**:
 everything about what a work should be lives in one document you write,
-`identity/DNA.md`. Clone the repo, write your DNA, add one API key, and the
-loop runs.
+`identity/DNA.md`.
+
+> **This repo is a blueprint, not an installation.** Don't run the agent from
+> this repository — make your own copy first. It's a GitHub template: click
+> **Use this template** (or fork it), so your agent gets its own repo. That
+> matters because the repo *is* the artwork's archive: every candidate the
+> agent makes — pending, rejected, orphaned — is committed to git, and your
+> works belong in your repository, not in the blueprint.
 
 ## How it works
 
@@ -38,7 +44,8 @@ is one config edit away.
 ## Quickstart
 
 ```sh
-git clone <this repo> && cd hylon
+# 1. On GitHub: "Use this template" (or fork) → your-name/your-agent
+git clone git@github.com:your-name/your-agent.git && cd your-agent
 npm install
 cp .env.example .env               # set OPENROUTER_API_KEY (the only required secret)
 cp identity/DNA.template.md identity/DNA.md
@@ -65,7 +72,7 @@ documented in [`ops/DAEMON.md`](ops/DAEMON.md) and [`ops/DEPLOY.md`](ops/DEPLOY.
 | `paths` | DNA, catalogue, guidance, and lifecycle directories |
 | `dashboard` | port + the hostname used in notification links (e.g. a tailnet host) |
 | `email.to` | notification recipient (empty = console log) |
-| `git` | remote/branch and whether wakes auto-push |
+| `git` | remote/branch and whether wakes auto-push. Ships as `push: false`; flip it to `true` once the agent lives in **your** repo and you want every candidate pushed (that also makes approvals trigger a site deploy) |
 | `site` | title/lede/footer of the assembled public catalogue page |
 
 Secrets come from `.env` (or your shell env): `OPENROUTER_API_KEY` is the base

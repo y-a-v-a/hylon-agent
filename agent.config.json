@@ -26,7 +26,7 @@
   },
   "dashboard": { "port": 4737, "host": "localhost" },
   "email": { "to": "" },
-  "git": { "remote": "origin", "branch": "main", "push": true },
+  "git": { "remote": "origin", "branch": "main", "push": false },
   "site": {
     "title": "machine works",
     "lede": "Works drawn from an artistic DNA by an autonomous agent, judged by an independent AI jury, and confirmed by the artist before publication.",
