@@ -51,3 +51,27 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
 - **2026-07-29** — Read the full vana source (src/, ops/, identity/, config,
   tests). Decided the design above. Repo scaffold: package.json (no Agent SDK
   dependency), tsconfig, .gitignore, agent.config.json, .env.example.
+- **2026-07-29** — Ported the full pipeline. `openrouter.ts` (new shared
+  client), `generator.ts` rewritten for a single structured OpenRouter call
+  with delimited-section parsing, `jury.ts` rubric-parameterized, notify made
+  SMTP-optional; loop/orphans/refine/promote/dashboard/site/daemon carried over
+  with generic naming (`AGENT_*` env, `.agent-state.json`). Typecheck clean.
+- **2026-07-29** — Ported the whole test suite (118 tests passing), including
+  new coverage for section parsing, custom-rubric math, and the file
+  round-trip. `jury.live.ts` adapted as the opt-in live OpenRouter contract
+  test.
+- **2026-07-29** — Identity template (`identity/DNA.template.md` +
+  `catalogue.seed.example.json`), ops (plist template with install-time path
+  substitution, generic status.sh, DAEMON/DEPLOY docs, verify-deploy with URL
+  argument), vercel.json CSP backstop, workspace scaffold. README +
+  ARCHITECTURE rewritten for the generic harness. `npm run check` green.
+
+## To go live after cloning
+
+1. `cp .env.example .env` → set `OPENROUTER_API_KEY`.
+2. `cp identity/DNA.template.md identity/DNA.md` → write your DNA (keep §8 in
+   sync with `rubric` in `agent.config.json`, or edit both).
+3. Optional: `identity/catalogue.seed.json` + `npm run seed`.
+4. Pick models in `agent.config.json` (`models.generator` ≠ `models.jury` vendor).
+5. `npm run once` to test a cycle; `npm run dashboard` to gate; `ops/DAEMON.md`
+   to go autonomous; `ops/DEPLOY.md` to publish.

@@ -1,0 +1,104 @@
+# hylon
+
+**A generic autonomous art agent: feed it an artistic DNA, and it generates
+works, has an independent AI jury grade them, and publishes only what you
+approve.**
+
+hylon is the generic extraction of [vana](https://github.com/y-a-v-a/vana) —
+the *process* without the person. The harness encodes **no taste of its own**:
+everything about what a work should be lives in one document you write,
+`identity/DNA.md`. Clone the repo, write your DNA, add one API key, and the
+loop runs.
+
+## How it works
+
+```
+DNA  →  generate (OpenRouter model)  →  jury (different OpenRouter model)  →  hard human gate  →  publish
+        a self-contained web work       scores it against the DNA's rubric    you approve from     to any static host
+                                        (the harness computes the verdict)    the local dashboard
+```
+
+- **Generator** — writes a single self-contained `index.html` (plus a
+  motivation and metadata), in your DNA, with zero external requests.
+- **Jury** — a *different* model grades it against your DNA's rubric. The
+  model only supplies gate booleans and scores; the harness computes the
+  weighting, thresholds, and verdict deterministically.
+- **Hard gate** — nothing goes live without your approval on the local
+  dashboard. The jury's verdict stays private; the work and its motivation go
+  public.
+- **Autonomous** — a daemon wakes on an interval, bounded by a time + dollar
+  budget, and notifies you (email, or console log) when something clears the
+  jury.
+
+Both agents run through **OpenRouter** with a single key, so any model pairing
+is one config edit away.
+
+## Quickstart
+
+```sh
+git clone <this repo> && cd hylon
+npm install
+cp .env.example .env               # set OPENROUTER_API_KEY (the only required secret)
+cp identity/DNA.template.md identity/DNA.md
+$EDITOR identity/DNA.md            # ← make it yours; this is the whole point
+npm run seed                       # optional: seeds catalogue.json (from identity/catalogue.seed.json if present)
+npm test                           # dependency-less node:test suite
+npm run once                       # one generate → jury → (maybe) notify cycle
+npm run dashboard                  # the approval gateway, http://localhost:4737
+```
+
+Going autonomous (launchd) and publishing (any static host / Vercel) are
+documented in [`ops/DAEMON.md`](ops/DAEMON.md) and [`ops/DEPLOY.md`](ops/DEPLOY.md).
+
+## Configuration — `agent.config.json`
+
+| Key | What it does |
+|---|---|
+| `name` | display name (dashboard, notifications, OpenRouter X-Title) |
+| `models.generator` / `models.jury` | **the OpenRouter model ids** for each agent — keep them different vendors so no model grades its own output |
+| `generation` | `temperature` / `maxTokens` for the generator call |
+| `rubric` | the jury's shape: hard-gate ids, scored dimensions + weights, `scoreMax`. Your DNA §8 defines what they *mean* — keep the two in sync |
+| `thresholds` | weighted-total cutoffs for `strong` / `borderline` (else reject) |
+| `interval`, `workBudget`, `costFuse` | wake schedule, per-wake time budget, $ ceilings per wake/day |
+| `paths` | DNA, catalogue, guidance, and lifecycle directories |
+| `dashboard` | port + the hostname used in notification links (e.g. a tailnet host) |
+| `email.to` | notification recipient (empty = console log) |
+| `git` | remote/branch and whether wakes auto-push |
+| `site` | title/lede/footer of the assembled public catalogue page |
+
+Secrets come from `.env` (or your shell env): `OPENROUTER_API_KEY` is the base
+connector key for both agents; `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS` (+ optional
+`SMTP_PORT`/`SMTP_FROM`) enable real email if you want it.
+
+## The lifecycle
+
+```
+workspace/pending/<id>/     awaiting your approval    { index.html, motivation.md, meta.json, jury.json }
+workspace/published/<id>/   approved — publicly served
+workspace/rejected/<id>/    archived, discarded
+workspace/orphaned/<id>/    finished but never juried (recoverable from the dashboard)
+catalogue.json              every work + status; feeds the duplicate gate and the generator's memory
+```
+
+From the dashboard you can **Approve**, **Reject** (optionally with a note the
+generator learns from next round), **Refine** (the agent reworks a pending
+candidate from your feedback), and **Re-jury** orphans.
+
+## Invariants (kept from vana)
+
+- **The hard gate is sacred** — nothing reaches `published/` without your click.
+- **Two vendors, always** — generator ≠ jury.
+- **Self-contained, enforced in layers** — a regex denylist at generation time,
+  and a restrictive CSP + sandboxed iframe at render time.
+- **`jury.json` is private** — committed as the record, never published.
+- **The DNA is the only taste authority** — tune the jury by editing your DNA
+  (and its rubric mirror in config), not the code.
+- **The budget is a fuse, not a target.**
+
+The full as-built design is in [ARCHITECTURE.md](ARCHITECTURE.md); the build
+log is in [PROGRESS.md](PROGRESS.md).
+
+---
+
+Process extracted from [vana](https://github.com/y-a-v-a/vana) by Vincent
+Bruijn (y-a-v-a). Open license by default · no cookies · no tracking.
