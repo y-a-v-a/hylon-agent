@@ -8,9 +8,12 @@ import {
   renderResolved,
   renderNotFound,
   renderOrphan,
+  renderAmendment,
+  renderDnaDiff,
   type PendingItem,
 } from "./dashboard.ts";
 import type { OrphanItem } from "./orphans.ts";
+import type { AmendmentItem } from "./amend.ts";
 import { statusFor } from "./promote.ts";
 import type { GeneratedMeta } from "./generator.ts";
 import type { JuryVerdict } from "./jury.ts";
@@ -179,4 +182,56 @@ test("renderOrphan tolerates a missing orphan record", () => {
   const html = renderOrphan(orphan.id, meta, null, "");
   assert.match(html, /stranded \(no record\)/);
   assert.match(html, /action="\/orphan\/2026-07-27-stranded\/rejury"/);
+});
+
+// ── DNA amendment petitions ──────────────────────────────────────────────────
+
+const amendment: AmendmentItem = {
+  id: "2026-07-29-amendment",
+  record: {
+    id: "2026-07-29-amendment",
+    at: "2026-07-29T10:00:00.000Z",
+    model: "anthropic/claude-sonnet-4.5",
+    signalsThrough: "2026-07-29T10:00:00.000Z",
+    signalCount: 6,
+    published: 2,
+    rejected: 4,
+    warnings: ["gate G2 no longer mentioned"],
+    diff: { added: 4, removed: 2 },
+    costUsd: 0.021,
+    status: "pending",
+  },
+  rationale: "The artist consistently rejects <reverent> homage; the DNA should name the required bite.",
+  proposedDna: "# DNA\nline kept\nline changed NEW",
+};
+
+test("renderIndex omits the amendment section when there is none", () => {
+  assert.doesNotMatch(renderIndex([]), /Amendment/);
+});
+
+test("renderIndex lists a pending petition with its diff stat", () => {
+  const html = renderIndex([], [], "hylon", [amendment]);
+  assert.match(html, /DNA amendment \(1\)/);
+  assert.match(html, /href="\/amendment\/2026-07-29-amendment"/);
+  assert.match(html, /\+4 −2/);
+  assert.match(html, /Nothing changes without your approval/);
+});
+
+test("renderDnaDiff colorizes added and removed lines and escapes content", () => {
+  const html = renderDnaDiff("a\n<b>\nc", "a\n<b> changed\nc", 0);
+  assert.match(html, /class="del">− &lt;b&gt;</);
+  assert.match(html, /class="add">\+ &lt;b&gt; changed</);
+  assert.doesNotMatch(html, /<b>/);
+});
+
+test("renderAmendment shows rationale, warnings, diff, and ratify/decline forms", () => {
+  const html = renderAmendment(amendment, "# DNA\nline kept\nline changed OLD", "hylon");
+  assert.match(html, /rejects &lt;reverent&gt; homage/); // escaped rationale
+  assert.match(html, /gate G2 no longer mentioned/);
+  assert.match(html, /class="del"/);
+  assert.match(html, /class="add"/);
+  assert.match(html, /action="\/amendment\/2026-07-29-amendment\/approve"/);
+  assert.match(html, /action="\/amendment\/2026-07-29-amendment\/reject"/);
+  assert.match(html, /name="note"/);
+  assert.match(html, /6 signals/);
 });

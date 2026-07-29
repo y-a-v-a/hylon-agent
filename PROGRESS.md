@@ -106,6 +106,20 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
   checked before any generation spend. New `vendor.ts` + vendor/README.md.
   141 tests passing.
 
+- **2026-07-29** — **Self-amending DNA** (branch `self-amending-dna`). The
+  artist initiates the DNA from their work *so far*; their live decisions
+  (reject notes, refinement requests) are treated as signals of artistic
+  drift. When ≥ `amendments.minSignals` new signals accumulate (checked after
+  each wake, or forced via `npm run amend`), the agent files an **amendment
+  petition**: rationale citing specific notes + the complete revised DNA,
+  stored under `identity/amendments/pending/` (one at a time), committed, and
+  surfaced on the dashboard as a colorized diff (new dependency-free LCS
+  `diff.ts`) with Ratify / Decline (+note). Ratify is the only code path that
+  rewrites `identity/DNA.md`; declined petitions and their notes are shown to
+  future proposers so the agent never re-litigates. Rubric anchors (gate ids,
+  dimension names) are protected by prompt and by review warnings; the "NO
+  AMENDMENT" outcome is honored; petitions are fuse-metered. 164 tests passing.
+
 ## To go live after copying the template
 
 0. On GitHub: **Use this template** (or fork) → your own repo, then clone that.

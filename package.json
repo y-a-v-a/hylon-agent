@@ -12,6 +12,7 @@
     "dev": "tsx watch src/daemon.ts",
     "seed": "tsx src/catalogue.ts seed",
     "once": "tsx src/loop.ts once",
+    "amend": "tsx src/amend.ts",
     "dashboard": "tsx src/dashboard.ts",
     "orphans": "tsx src/orphans.ts",
     "build:site": "tsx src/site.ts",

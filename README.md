@@ -69,6 +69,7 @@ documented in [`ops/DAEMON.md`](ops/DAEMON.md) and [`ops/DEPLOY.md`](ops/DEPLOY.
 | `technologies` | the palette. `apis`: browser APIs the generator is told are in bounds (SVG, Canvas 2D, WebGL, Web Audio, CSS animation by default — the only hard limit is still zero external requests). `libraries`: vendored libraries by name → file (e.g. `"threejs": "vendor/three.min.js"`); the generator uses a `<script data-vendor="name"></script>` placeholder and the harness inlines the source at render/build time. See [`vendor/README.md`](vendor/README.md) |
 | `rubric` | the jury's shape: hard-gate ids, scored dimensions + weights, `scoreMax`. Your DNA §8 defines what they *mean* — keep the two in sync |
 | `thresholds` | weighted-total cutoffs for `strong` / `borderline` (else reject) |
+| `amendments` | the self-amending DNA: `enabled`, `minSignals` (new signals before the agent may petition), `model` (empty = generator model) |
 | `interval`, `workBudget`, `costFuse` | wake schedule, per-wake time budget, $ ceilings per wake/day |
 | `paths` | DNA, catalogue, guidance, and lifecycle directories |
 | `dashboard` | port + the hostname used in notification links (e.g. a tailnet host) |
@@ -94,6 +95,27 @@ From the dashboard you can **Approve**, **Reject** (optionally with a note the
 generator learns from next round), **Refine** (the agent reworks a pending
 candidate from your feedback), and **Re-jury** orphans.
 
+## The self-amending DNA
+
+You initiate the DNA from your artistic work *so far* — but your decisions at
+the gate are themselves artistic statements, and they may drift away from what
+the document says. hylon treats that drift as material: when enough new signals
+accumulate (rejection notes and refinement requests — `amendments.minSignals`,
+default 5), the agent may file an **amendment petition**: a rationale citing
+your specific notes, plus the complete revised DNA. The petition lands on the
+dashboard as a colorized diff with **Ratify** / **Decline** (+note) buttons.
+
+- Ratifying is the **only** code path that rewrites `identity/DNA.md` — the
+  agent proposes, you legislate. Every petition, accepted or declined, is
+  archived under `identity/amendments/` and committed, so the DNA's git
+  history reads as the record of an identity negotiated between artist and
+  machine.
+- Declined petitions (and your notes on them) are shown to future proposers so
+  the agent doesn't re-litigate what you turned down.
+- Petitions are conservative by prompt (amend only what the signals support,
+  never touch the rubric anchors wired to config), fuse-metered, and checked
+  after each wake. Force one anytime with `npm run amend`.
+
 ## Invariants (kept from vana)
 
 - **The hard gate is sacred** — nothing reaches `published/` without your click.
@@ -101,8 +123,9 @@ candidate from your feedback), and **Re-jury** orphans.
 - **Self-contained, enforced in layers** — a regex denylist at generation time,
   and a restrictive CSP + sandboxed iframe at render time.
 - **`jury.json` is private** — committed as the record, never published.
-- **The DNA is the only taste authority** — tune the jury by editing your DNA
-  (and its rubric mirror in config), not the code.
+- **The DNA is the only taste authority — and only you rewrite it.** The agent
+  may *petition* to amend it from your accumulated decisions, but ratification
+  at the gate is the sole code path that touches `identity/DNA.md`.
 - **The budget is a fuse, not a target.**
 
 The full as-built design is in [ARCHITECTURE.md](ARCHITECTURE.md); the build

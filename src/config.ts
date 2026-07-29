@@ -76,11 +76,27 @@ const ConfigSchema = z.object({
     strong: z.number(),
     borderline: z.number(),
   }),
+  /**
+   * Self-amending DNA: the agent may PETITION to update identity/DNA.md when
+   * accumulated signals (rejection notes, refinement requests) suggest the
+   * artist's wishes have shifted. A petition is a proposal at the human gate —
+   * approval is the only thing that ever rewrites the DNA.
+   */
+  amendments: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Minimum new signals since the last proposal before the agent may petition. */
+      minSignals: z.number().int().positive().default(5),
+      /** OpenRouter model for drafting proposals; empty = models.generator. */
+      model: z.string().default(""),
+    })
+    .default({ enabled: true, minSignals: 5, model: "" }),
   paths: z.object({
     dna: z.string(),
     catalogue: z.string(),
     catalogueSeed: z.string().default("identity/catalogue.seed.json"),
     guidance: z.string(),
+    amendments: z.string().default("identity/amendments"),
     pending: z.string(),
     published: z.string(),
     rejected: z.string(),
@@ -119,6 +135,7 @@ export type Config = z.infer<typeof ConfigSchema> & {
     catalogue: string;
     catalogueSeed: string;
     guidance: string;
+    amendments: string;
     pending: string;
     published: string;
     rejected: string;
@@ -149,6 +166,7 @@ export function loadConfig(): Config {
       catalogue: resolve(ROOT, parsed.paths.catalogue),
       catalogueSeed: resolve(ROOT, parsed.paths.catalogueSeed),
       guidance: resolve(ROOT, parsed.paths.guidance),
+      amendments: resolve(ROOT, parsed.paths.amendments),
       pending: resolve(ROOT, parsed.paths.pending),
       published: resolve(ROOT, parsed.paths.published),
       rejected: resolve(ROOT, parsed.paths.rejected),

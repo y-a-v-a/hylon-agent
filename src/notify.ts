@@ -61,6 +61,53 @@ export function buildEmail(
   return { subject, body };
 }
 
+/** URL to the approval dashboard entry for an amendment petition. */
+export function amendmentUrl(cfg: Config, id: string): string {
+  const host = cfg.dashboard.host || "localhost";
+  return `http://${host}:${cfg.dashboard.port}/amendment/${id}`;
+}
+
+/** Build the amendment-petition email (pure, testable). */
+export function buildAmendmentEmail(
+  id: string,
+  rationale: string,
+  info: { signalCount: number; diff: { added: number; removed: number }; warnings: string[] },
+  url: string,
+  name = "agent",
+): Email {
+  const subject = `${name} · amendment petition — ${id}`;
+  const body = [
+    "The agent petitions to amend the artistic DNA, based on your recent decisions.",
+    `Signals considered: ${info.signalCount} · proposed diff: +${info.diff.added} −${info.diff.removed}`,
+    ...(info.warnings.length ? ["", "Warnings:", ...info.warnings.map((w) => `  ! ${w}`)] : []),
+    "",
+    "Rationale:",
+    rationale.trim(),
+    "",
+    "Nothing changes until you approve. Review the full diff and decide:",
+    `  ${url}`,
+    "",
+    `— ${name}`,
+  ].join("\n");
+  return { subject, body };
+}
+
+/** Notify the artist a petition awaits the gate (SMTP or console fallback). */
+export async function sendAmendmentEmail(
+  id: string,
+  rationale: string,
+  info: { signalCount: number; diff: { added: number; removed: number }; warnings: string[] },
+): Promise<void> {
+  const cfg = loadConfig();
+  const { subject, body } = buildAmendmentEmail(id, rationale, info, amendmentUrl(cfg, id), cfg.name);
+  const smtp = loadSmtp();
+  if (!smtp || !cfg.email.to) {
+    console.log(`[notify] email not configured — ${subject}\n${body}`);
+    return;
+  }
+  await sendMail(smtp, { from: smtp.from, to: cfg.email.to, subject, body });
+}
+
 /**
  * Notify the artist a candidate awaits the gate. Sends authenticated SMTP when
  * configured (SMTP_* env + email.to in config); otherwise logs to the console —

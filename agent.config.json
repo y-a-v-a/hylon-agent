@@ -18,11 +18,13 @@
     "scoreMax": 5
   },
   "thresholds": { "strong": 38, "borderline": 30 },
+  "amendments": { "enabled": true, "minSignals": 5 },
   "paths": {
     "dna": "identity/DNA.md",
     "catalogue": "catalogue.json",
     "catalogueSeed": "identity/catalogue.seed.json",
     "guidance": "identity/guidance.md",
+    "amendments": "identity/amendments",
     "pending": "workspace/pending",
     "published": "workspace/published",
     "rejected": "workspace/rejected",

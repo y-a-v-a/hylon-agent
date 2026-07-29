@@ -5,6 +5,7 @@ import { runWake, type AcceptedContext } from "./loop.ts";
 import { sendCandidateEmail } from "./notify.ts";
 import { startDashboard } from "./dashboard.ts";
 import { withLock } from "./lock.ts";
+import { proposeAmendment } from "./amend.ts";
 
 // The long-running process: serves the approval dashboard continuously AND
 // wakes on the configured interval to generate → jury → notify. Designed to run
@@ -42,6 +43,20 @@ async function wake(): Promise<void> {
     console.error(`[daemon] ${ts()} wake error: ${(err as Error).message}`);
   } finally {
     waking = false;
+  }
+
+  // After the wake, let the agent petition to amend the DNA if the artist's
+  // recent decisions have accumulated enough signals. A petition failure never
+  // affects the wake; the petition itself only ever lands at the human gate.
+  try {
+    const r = await withLock(() => proposeAmendment());
+    if (r.status === "proposed") {
+      console.log(`[daemon] ${ts()} amendment petition filed: ${r.id}`);
+    } else if (r.status !== "disabled" && r.status !== "below-threshold" && r.status !== "no-signals" && r.status !== "pending-exists") {
+      console.log(`[daemon] ${ts()} amendment check: ${r.status}${r.detail ? ` (${r.detail})` : ""}`);
+    }
+  } catch (err) {
+    console.error(`[daemon] ${ts()} amendment check failed: ${(err as Error).message}`);
   }
 }
 

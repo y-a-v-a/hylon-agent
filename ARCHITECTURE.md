@@ -73,6 +73,8 @@ on the time budget or the $ fuse. Budgets live in `agent.config.json`.
 | `notify.ts` | `buildEmail()` + `sendCandidateEmail()`; falls back to console logging when SMTP/email is not configured |
 | `dashboard.ts` | `node:http` server: pending list, candidate view (sandboxed iframe + CSP), Approve / Reject (+note) / Refine, orphan recovery, status pages |
 | `promote.ts` | `decide(id, approve\|reject, {note})` — pending→published/rejected, catalogue update, commit+push. **Approve is the only writer to `published/`** |
+| `amend.ts` | The self-amending DNA: collects signals (guidance entries, refinement feedback, decision stats) since the last petition; when ≥ `amendments.minSignals`, one OpenRouter call drafts a rationale + complete revised DNA; stored as a pending petition under `identity/amendments/` (one at a time), with diff stats and rubric-anchor warnings. `decideAmendment()` — **ratify is the only writer to `identity/DNA.md`**; declined petitions + notes are fed to future proposers. CLI `npm run amend` |
+| `diff.ts` | Dependency-free line diff (LCS) with context collapsing — renders the petition diff on the dashboard and in text |
 | `refine.ts` | `runRefine(id, feedback)` — reworks a pending candidate in place from human feedback, re-juries, stays pending for the gate |
 | `orphans.ts` | Works stranded before a verdict are parked, listed, and re-juriable — never silently deleted |
 | `lock.ts` | In-process mutex so a refine and a scheduled wake never run at once |
@@ -114,9 +116,12 @@ dimensions, weights, score ceiling) is config; the rubric *meaning* is DNA.
   **CSP + sandboxed iframe** at render time (dashboard `/work` and
   `vercel.json` on the public site).
 - **`jury.json` is private** — committed as the record, never published.
-- **The DNA is the only taste authority for the gate** — `guidance.md` (from
-  reject-with-note) steers the **generator** only; the jury never reads it, so
-  accumulated guidance can't drift the gate.
+- **The DNA is the only taste authority for the gate — and only the artist
+  rewrites it.** `guidance.md` (from reject-with-note) steers the **generator**
+  only; the jury never reads it, so accumulated guidance can't drift the gate.
+  The agent may **petition** to fold accumulated signals into the DNA
+  (`amend.ts`), but ratification at the human gate is the sole code path that
+  writes `identity/DNA.md`, and every petition is archived + committed.
 - **Untrusted ids are validated** — an HTTP-supplied candidate id must pass
   `isValidId` before it is joined into any lifecycle path.
 - **The budget is a fuse, not a target** — time first, dollars as the backstop.
