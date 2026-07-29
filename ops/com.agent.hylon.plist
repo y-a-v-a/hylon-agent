@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agent.hylon</string>
+
+  <!-- __REPO__ and __NODE__ are substituted by `npm run daemon:install`.
+       Run via `zsh -lc` so .zshenv is sourced (OPENROUTER_API_KEY, SMTP_*). -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd __REPO__ &amp;&amp; exec __NODE__ --import tsx src/daemon.ts</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>__REPO__/logs/daemon.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__REPO__/logs/daemon.err.log</string>
+</dict>
+</plist>
