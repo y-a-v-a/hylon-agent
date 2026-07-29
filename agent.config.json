@@ -1,0 +1,36 @@
+{
+  "name": "hylon",
+  "interval": { "hours": 24 },
+  "workBudget": { "minutes": 20 },
+  "costFuse": { "perWakeUsd": 5, "perDayUsd": 20 },
+  "models": {
+    "generator": "anthropic/claude-sonnet-4.5",
+    "jury": "minimax/minimax-m3"
+  },
+  "generation": { "temperature": 1, "maxTokens": 32000 },
+  "rubric": {
+    "gates": ["G1", "G2", "G3", "G4", "G5", "G6"],
+    "weights": { "novelty": 3, "nuance": 3, "narrative": 2, "craft": 1, "wit": 1 },
+    "scoreMax": 5
+  },
+  "thresholds": { "strong": 38, "borderline": 30 },
+  "paths": {
+    "dna": "identity/DNA.md",
+    "catalogue": "catalogue.json",
+    "catalogueSeed": "identity/catalogue.seed.json",
+    "guidance": "identity/guidance.md",
+    "pending": "workspace/pending",
+    "published": "workspace/published",
+    "rejected": "workspace/rejected",
+    "orphaned": "workspace/orphaned"
+  },
+  "dashboard": { "port": 4737, "host": "localhost" },
+  "email": { "to": "" },
+  "git": { "remote": "origin", "branch": "main", "push": true },
+  "site": {
+    "title": "machine works",
+    "lede": "Works drawn from an artistic DNA by an autonomous agent, judged by an independent AI jury, and confirmed by the artist before publication.",
+    "footer": "AI-generated, DNA-validated, human-confirmed. No cookies, no tracking."
+  },
+  "openrouter": { "referer": "", "title": "" }
+}

@@ -1,0 +1,24 @@
+# secrets
+.env
+.env.local
+
+# deps & build
+node_modules/
+dist/
+
+# runtime
+*.log
+logs/
+.DS_Store
+
+# daemon state (regenerable)
+.agent-state.json
+
+# generator staging area
+workspace/.work/
+
+# in-flight refinement marker (transient, local-only)
+.refining
+
+# built public site (assembled in CI)
+dist-site/

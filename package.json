@@ -1,0 +1,39 @@
+{
+  "name": "hylon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Generic autonomous art-agent harness: feed it an artistic DNA, it generates works via OpenRouter, has an independent OpenRouter jury grade them, gates on human approval, and publishes.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/daemon.ts",
+    "dev": "tsx watch src/daemon.ts",
+    "seed": "tsx src/catalogue.ts seed",
+    "once": "tsx src/loop.ts once",
+    "dashboard": "tsx src/dashboard.ts",
+    "orphans": "tsx src/orphans.ts",
+    "build:site": "tsx src/site.ts",
+    "status": "bash ops/status.sh",
+    "daemon:install": "sed -e \"s|__REPO__|$PWD|g\" -e \"s|__NODE__|$(command -v node)|g\" ops/com.agent.hylon.plist > \"$HOME/Library/LaunchAgents/com.agent.hylon.plist\" && echo installed",
+    "daemon:start": "launchctl load -w \"$HOME/Library/LaunchAgents/com.agent.hylon.plist\" && echo started",
+    "daemon:stop": "launchctl unload -w \"$HOME/Library/LaunchAgents/com.agent.hylon.plist\" && echo stopped",
+    "daemon:restart": "launchctl unload \"$HOME/Library/LaunchAgents/com.agent.hylon.plist\" 2>/dev/null; launchctl load -w \"$HOME/Library/LaunchAgents/com.agent.hylon.plist\" && echo restarted",
+    "daemon:logs": "tail -f logs/daemon.out.log",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc",
+    "check": "npm run typecheck && npm test && npm run build:site",
+    "test:live": "node --import tsx --test src/jury.live.ts",
+    "verify:deploy": "bash ops/verify-deploy.sh"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.6.0"
+  }
+}
