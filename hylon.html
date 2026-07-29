@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hylon — how the machine makes, judges, and waits</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --muted:#6b6b6b; --line:#e3e0d8; --paper:#f4f1e9;
+    --accent:#002fa7; --green:#1a7a3a; --amber:#b8860b; --red:#a02020; --card:#ffffff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 Georgia,serif}
+  header{border-bottom:1px solid var(--line);padding:2.5rem 1.5rem 2rem}
+  .wrap{max-width:52rem;margin:0 auto;padding:0 1.5rem}
+  header .wrap{padding:0 1.5rem}
+  h1{font-weight:400;font-size:2rem;margin:0 0 .3rem}
+  .sub{color:var(--muted);margin:0;font-size:1.05rem}
+  main{padding:1rem 0 5rem}
+  h2{font-weight:400;font-size:1.45rem;margin:3rem 0 .8rem;border-top:1px solid var(--line);padding-top:2rem}
+  h3{font-weight:600;font-size:1.05rem;margin:1.6rem 0 .4rem}
+  p{margin:.7rem 0}
+  .figure{background:var(--card);border:1px solid var(--line);border-radius:.4rem;padding:1.2rem;margin:1.4rem 0;overflow-x:auto}
+  .figure svg{display:block;max-width:100%;height:auto;margin:0 auto}
+  figcaption{color:var(--muted);font-size:.85rem;margin-top:.8rem;text-align:center}
+  code{font:.85em/1.4 ui-monospace,Menlo,monospace;background:#ece8dd;padding:.08em .35em;border-radius:.25em}
+  .k{color:var(--accent)}
+  table{border-collapse:collapse;width:100%;margin:1rem 0;font-size:.95rem}
+  th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  .callout{border-left:3px solid var(--accent);background:#fff;padding:.8rem 1.1rem;margin:1.2rem 0;border-radius:0 .3rem .3rem 0}
+  .callout p{margin:.3rem 0}
+  ul{margin:.7rem 0;padding-left:1.4rem}
+  li{margin:.35rem 0}
+  footer{border-top:1px solid var(--line);color:var(--muted);font-size:.85rem;padding:1.2rem 0 0;margin-top:3rem}
+  /* shared svg text styling — set only the font here: a CSS `fill` would
+     override the per-element fill attributes (CSS beats presentation attrs) */
+  svg text{font-family:Georgia,serif}
+  svg .mono{font-family:ui-monospace,Menlo,monospace}
+  svg .small{font-size:11px}
+  svg .small:not([fill]){fill:#6b6b6b}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>hylon</h1>
+    <p class="sub">An autonomous art agent that generates works from an artistic DNA, submits them to an independent AI jury, and publishes nothing without a human yes.</p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <p>hylon is a harness, not an artist. It contains no opinions about what good art looks like.
+  Everything it knows about taste lives in a single document — the <strong>artistic DNA</strong> —
+  written by a human. The harness supplies the <em>process</em>: a generator that works inside the
+  DNA, a jury that grades against it, an arithmetic gate that turns judgments into a verdict, and a
+  final approval step that only a person can click. Both AI roles run through OpenRouter with one
+  API key, so the models on either side of the table are a configuration choice, not a code change.</p>
+
+  <h2>1 · The operational loop</h2>
+
+  <p>On a schedule (or on demand), the daemon “wakes.” A wake is a bounded work session: it keeps
+  producing candidates until one survives the jury, or until it runs out of time or money. Every
+  candidate — whether it passes, fails, or gets stranded — is committed to git, so the repository
+  is the complete, honest record of everything the machine ever made.</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 860 340" role="img" aria-label="Pipeline diagram: DNA and catalogue feed the generator, whose candidate goes to the jury; passing candidates wait for human approval before publication; failing ones are archived.">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#1a1a1a"/>
+        </marker>
+        <marker id="arrR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#a02020"/>
+        </marker>
+        <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#1a7a3a"/>
+        </marker>
+      </defs>
+
+      <!-- DNA source -->
+      <rect x="20" y="30" width="150" height="64" rx="6" fill="#f4f1e9" stroke="#002fa7" stroke-width="1.5"/>
+      <text x="95" y="56" text-anchor="middle" font-size="14" fill="#002fa7">artistic DNA</text>
+      <text x="95" y="76" text-anchor="middle" class="small">+ catalogue of works</text>
+
+      <!-- Generator -->
+      <rect x="240" y="20" width="170" height="84" rx="6" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/>
+      <text x="325" y="48" text-anchor="middle" font-size="15">GENERATOR</text>
+      <text x="325" y="68" text-anchor="middle" class="small">agentic file-tool loop</text>
+      <text x="325" y="84" text-anchor="middle" class="small mono">models.generator</text>
+
+      <!-- Jury -->
+      <rect x="480" y="20" width="170" height="84" rx="6" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/>
+      <text x="565" y="48" text-anchor="middle" font-size="15">JURY</text>
+      <text x="565" y="68" text-anchor="middle" class="small">gates + scores only</text>
+      <text x="565" y="84" text-anchor="middle" class="small mono">models.jury</text>
+
+      <!-- Verdict computation -->
+      <rect x="700" y="20" width="140" height="84" rx="6" fill="#f4f1e9" stroke="#1a1a1a" stroke-width="1.5" stroke-dasharray="5 3"/>
+      <text x="770" y="48" text-anchor="middle" font-size="14">HARNESS</text>
+      <text x="770" y="66" text-anchor="middle" class="small">computes the</text>
+      <text x="770" y="80" text-anchor="middle" class="small">weighted verdict</text>
+
+      <!-- top arrows -->
+      <line x1="170" y1="62" x2="232" y2="62" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="410" y1="62" x2="472" y2="62" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="441" y="52" text-anchor="middle" class="small">candidate</text>
+      <line x1="650" y1="62" x2="692" y2="62" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- verdict split -->
+      <line x1="770" y1="104" x2="770" y2="140" stroke="#1a1a1a" stroke-width="1.5"/>
+      <line x1="770" y1="140" x2="330" y2="140" stroke="#1a7a3a" stroke-width="1.5"/>
+      <line x1="330" y1="140" x2="330" y2="168" stroke="#1a7a3a" stroke-width="1.5" marker-end="url(#arrG)"/>
+      <text x="545" y="132" text-anchor="middle" class="small" fill="#1a7a3a">strong / borderline</text>
+
+      <line x1="770" y1="140" x2="770" y2="168" stroke="#a02020" stroke-width="1.5" marker-end="url(#arrR)"/>
+      <text x="812" y="160" text-anchor="middle" class="small" fill="#a02020">reject</text>
+
+      <!-- pending -->
+      <rect x="240" y="172" width="180" height="60" rx="6" fill="#fff" stroke="#1a7a3a" stroke-width="1.5"/>
+      <text x="330" y="196" text-anchor="middle" font-size="14" fill="#1a7a3a">workspace/pending/</text>
+      <text x="330" y="216" text-anchor="middle" class="small">committed · artist notified</text>
+
+      <!-- rejected -->
+      <rect x="680" y="172" width="160" height="60" rx="6" fill="#fff" stroke="#a02020" stroke-width="1.5"/>
+      <text x="760" y="196" text-anchor="middle" font-size="14" fill="#a02020">workspace/rejected/</text>
+      <text x="760" y="216" text-anchor="middle" class="small">archived · loop retries</text>
+
+      <!-- retry arrow back to generator -->
+      <path d="M 760 232 L 760 300 L 205 300 L 205 90 L 230 90" fill="none" stroke="#6b6b6b" stroke-width="1.2" stroke-dasharray="4 4" marker-end="url(#arr)"/>
+      <text x="490" y="292" text-anchor="middle" class="small">wake continues until pass, time budget, or $ fuse</text>
+
+      <!-- human gate -->
+      <rect x="20" y="172" width="150" height="60" rx="6" fill="#002fa7"/>
+      <text x="95" y="196" text-anchor="middle" font-size="14" fill="#fff">HUMAN GATE</text>
+      <text x="95" y="216" text-anchor="middle" font-size="11" fill="#cdd7f5">approve / reject / refine</text>
+      <line x1="240" y1="202" x2="178" y2="202" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr)"/>
+
+      <!-- published -->
+      <rect x="20" y="262" width="150" height="58" rx="6" fill="#fff" stroke="#1a7a3a" stroke-width="1.5"/>
+      <text x="95" y="286" text-anchor="middle" font-size="13" fill="#1a7a3a">workspace/published/</text>
+      <text x="95" y="304" text-anchor="middle" class="small">→ public site build</text>
+      <line x1="95" y1="232" x2="95" y2="254" stroke="#1a7a3a" stroke-width="1.5" marker-end="url(#arrG)"/>
+    </svg>
+    <figcaption>Fig. 1 — One wake. The jury model judges; the harness decides; the human publishes.</figcaption>
+  </figure>
+
+  <p>Three budgets keep the loop honest. A <strong>time budget</strong> (default 20 minutes per
+  wake) stops open-ended tinkering. A <strong>cost fuse</strong> caps spending per wake and per day,
+  measured from OpenRouter’s own per-call cost reporting, and is checked <em>before</em> each
+  attempt — the agent never starts work it cannot afford to finish. And a <strong>turn limit</strong>
+  bounds the generator’s internal loop. The budget is a fuse, not a target: hitting it means the
+  machine goes back to sleep, not that it tries harder.</p>
+
+  <h2>2 · The artistic DNA principle</h2>
+
+  <p>The central design rule is a strict separation of powers: <em>the harness owns the process;
+  the DNA owns the taste.</em> The DNA (<code>identity/DNA.md</code>) is a markdown document written
+  by the artist that reads less like a biography and more like an operating system. It states who
+  the artist is, the principles a work must enact (each with an ID the agents can cite), the
+  lineage and references the practice answers to, the material constraints, and — critically — the
+  validation rubric the jury will apply.</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 760 260" role="img" aria-label="The DNA document feeds both the generator and the jury; artist guidance feeds only the generator.">
+      <defs>
+        <marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#002fa7"/>
+        </marker>
+        <marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#b8860b"/>
+        </marker>
+      </defs>
+
+      <!-- DNA document -->
+      <rect x="30" y="50" width="200" height="160" rx="6" fill="#fff" stroke="#002fa7" stroke-width="1.5"/>
+      <line x1="30" y1="86" x2="230" y2="86" stroke="#e3e0d8"/>
+      <text x="130" y="74" text-anchor="middle" font-size="15" fill="#002fa7">identity/DNA.md</text>
+      <text x="48" y="110" font-size="12">§ principles (P1, P2, …)</text>
+      <text x="48" y="132" font-size="12">§ lineage &amp; references</text>
+      <text x="48" y="154" font-size="12">§ constraints &amp; voice</text>
+      <text x="48" y="176" font-size="12" font-weight="bold">§ rubric: gates + criteria</text>
+      <text x="48" y="196" class="small">the only taste authority</text>
+
+      <!-- Generator -->
+      <rect x="480" y="30" width="230" height="70" rx="6" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/>
+      <text x="595" y="58" text-anchor="middle" font-size="14">GENERATOR</text>
+      <text x="595" y="80" text-anchor="middle" class="small">DNA = its system prompt / identity</text>
+
+      <!-- Jury -->
+      <rect x="480" y="150" width="230" height="70" rx="6" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/>
+      <text x="595" y="178" text-anchor="middle" font-size="14">JURY</text>
+      <text x="595" y="200" text-anchor="middle" class="small">DNA = the standard it grades against</text>
+
+      <!-- arrows from DNA -->
+      <line x1="230" y1="90" x2="472" y2="63" stroke="#002fa7" stroke-width="1.5" marker-end="url(#arr2)"/>
+      <line x1="230" y1="170" x2="472" y2="187" stroke="#002fa7" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+      <!-- guidance -->
+      <rect x="240" y="8" width="170" height="44" rx="6" fill="#f4f1e9" stroke="#b8860b" stroke-width="1.4"/>
+      <text x="325" y="26" text-anchor="middle" font-size="12" fill="#b8860b">identity/guidance.md</text>
+      <text x="325" y="42" text-anchor="middle" class="small">rejection notes, accumulated</text>
+      <line x1="410" y1="34" x2="472" y2="45" stroke="#b8860b" stroke-width="1.4" marker-end="url(#arr3)"/>
+      <text x="380" y="248" text-anchor="middle" class="small">guidance never reaches the jury — accumulated notes steer the maker, so they cannot drift the gate</text>
+    </svg>
+    <figcaption>Fig. 2 — One document, two readers. The generator internalizes the DNA; the jury enforces it.</figcaption>
+  </figure>
+
+  <p>Both agents read the same document, but in different postures. The generator receives the DNA
+  as its system prompt — an identity to inhabit — and is asked to produce work that would pass the
+  DNA’s <em>own</em> rubric. The jury receives the DNA as a standard to apply, with explicit
+  instructions not to be generous and a reminder that it did not make the work.</p>
+
+  <div class="callout">
+    <p><strong>Why the separation matters.</strong> When the artist rejects a candidate with a note
+    (“too reverent — I want more bite”), that note is appended to a guidance file the
+    <em>generator</em> reads on future rounds. The <em>jury</em> never sees it. Feedback can steer
+    what gets made, but it cannot quietly lower — or bend — the bar it is judged against. To change
+    the bar, you edit the DNA itself.</p>
+  </div>
+
+  <p>The DNA also carries a catalogue of the artist’s existing works (seeded from
+  <code>identity/catalogue.seed.json</code> and grown by the harness). It serves two purposes:
+  it gives the generator a memory of what already exists, and it gives the jury the corpus for its
+  duplicate check. hylon ships with a DNA <em>template</em> — the structure without the person —
+  so a fresh clone becomes a different artist by filling in one file.</p>
+
+  <h2>3 · The generator: an agent with a studio</h2>
+
+  <p>The generator is not a single text completion. It is a small agent loop: the model is given
+  three file tools — <code>write_file</code>, <code>read_file</code>, <code>list_files</code> —
+  scoped to a private staging directory, and it works the way a person at a desk does: draft,
+  read it back, notice the flaw, revise, and only then hand it in.</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 760 300" role="img" aria-label="The agent loop: the model proposes tool calls, the harness executes them in a sandboxed directory and returns results, until the model stops and all required files exist.">
+      <defs>
+        <marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#1a1a1a"/>
+        </marker>
+        <marker id="arr5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#1a7a3a"/>
+        </marker>
+      </defs>
+
+      <!-- model -->
+      <rect x="40" y="80" width="200" height="90" rx="6" fill="#fff" stroke="#1a1a1a" stroke-width="1.5"/>
+      <text x="140" y="115" text-anchor="middle" font-size="15">MODEL</text>
+      <text x="140" y="137" text-anchor="middle" class="small">thinks · decides the next step</text>
+      <text x="140" y="153" text-anchor="middle" class="small mono">≤ maxTurns turns</text>
+
+      <!-- sandbox -->
+      <rect x="440" y="60" width="280" height="130" rx="6" fill="#f4f1e9" stroke="#1a1a1a" stroke-width="1.5"/>
+      <text x="580" y="86" text-anchor="middle" font-size="14">SANDBOXED STAGING DIR</text>
+      <text x="580" y="112" text-anchor="middle" class="small mono">index.html · motivation.md · meta.json</text>
+      <text x="580" y="136" text-anchor="middle" class="small">paths resolved inside the dir only —</text>
+      <text x="580" y="152" text-anchor="middle" class="small">traversal comes back as an ERROR result</text>
+      <text x="580" y="176" text-anchor="middle" class="small mono">write_file · read_file · list_files</text>
+
+      <!-- arrows -->
+      <path d="M 240 100 L 432 92" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr4)"/>
+      <text x="336" y="84" text-anchor="middle" class="small">tool calls</text>
+      <path d="M 432 160 L 248 150" fill="none" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr4)"/>
+      <text x="336" y="178" text-anchor="middle" class="small">results — including its own errors</text>
+
+      <!-- exit -->
+      <path d="M 140 170 L 140 240 L 432 240" fill="none" stroke="#1a7a3a" stroke-width="1.5" marker-end="url(#arr5)"/>
+      <text x="180" y="232" class="small" fill="#1a7a3a">replies with no tool calls</text>
+
+      <rect x="440" y="214" width="280" height="52" rx="6" fill="#fff" stroke="#1a7a3a" stroke-width="1.5"/>
+      <text x="580" y="236" text-anchor="middle" font-size="13" fill="#1a7a3a">done — if all three files exist</text>
+      <text x="580" y="254" text-anchor="middle" class="small">otherwise: a reminder turn sends it back to work</text>
+    </svg>
+    <figcaption>Fig. 3 — The generator’s loop. The model acts; the harness executes, sandboxes, and holds it to the contract.</figcaption>
+  </figure>
+
+  <p>Every candidate must consist of exactly three files: the work itself
+  (<code>index.html</code>), a written <strong>motivation</strong> connecting the piece to specific
+  DNA principles and at least one named reference, and a machine-readable <code>meta.json</code>
+  (title, summary, mechanism, principles, references, license). The motivation matters: it forces
+  the generator to argue for the work in the DNA’s own terms, and it becomes part of the public
+  record when the work is published.</p>
+
+  <p>One constraint is enforced by the harness rather than the DNA, because it is structural:
+  the work must be <strong>fully self-contained</strong>. All CSS and JavaScript inline; no
+  external requests of any kind — no CDNs, no web fonts, no <code>fetch</code>, no analytics.
+  This is checked in layers: a fast pattern scan at generation time catches the obvious
+  violations, and a restrictive Content-Security-Policy plus a sandboxed iframe at render time
+  guarantees that anything the scan missed still cannot reach the network.</p>
+
+  <h2>4 · The juror</h2>
+
+  <p>The jury is a different model from a different vendor — a deliberate rule, so no model ever
+  grades its own output. It receives the DNA, the catalogue digest, and the complete candidate
+  (metadata, motivation, and full source code), and it returns one strictly structured JSON
+  object: a boolean for each hard gate, an integer score for each criterion, the references and
+  principles it recognized, a short rationale, and optionally reservations and a revision
+  suggestion.</p>
+
+  <p>What the jury does <em>not</em> return is a verdict. It is explicitly told not to compute
+  totals. The division of labor is precise:</p>
+
+  <table>
+    <tr><th>The model supplies</th><th>The harness computes</th></tr>
+    <tr>
+      <td>Judgments: gate booleans, 0–5 scores, rationale, reservations</td>
+      <td>Arithmetic and the decision: weighting, thresholds, the verdict</td>
+    </tr>
+    <tr>
+      <td>Qualitative, model-dependent, non-deterministic</td>
+      <td>Deterministic, unit-tested, identical for every model</td>
+    </tr>
+  </table>
+
+  <p>This split exists because language models are unreliable accountants: a model asked to “add
+  up the weighted scores and decide” will sometimes do the math wrong, or let the story it just
+  told itself bend the outcome. In hylon, the gate is code. The model judges; the code decides.
+  The full verdict is written to <code>jury.json</code> and committed alongside the work as a
+  private record — it is never published to the public site.</p>
+
+  <h2>5 · The scoring mechanism</h2>
+
+  <p>Scoring happens in two stages, and the order is the point: <strong>gates first, points
+  second</strong>. The rubric’s shape lives in <code>agent.config.json</code>; what each gate and
+  criterion <em>means</em> lives in the DNA. The defaults ship with six gates and five weighted
+  criteria.</p>
+
+  <figure class="figure">
+    <svg viewBox="0 0 760 430" role="img" aria-label="Scoring funnel: six hard gates must all pass, then five weighted scores are summed to a total out of fifty, which lands in a reject, borderline, or strong band.">
+      <defs>
+        <marker id="arr6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#1a1a1a"/>
+        </marker>
+      </defs>
+
+      <!-- stage 1: gates -->
+      <text x="30" y="30" font-size="14" font-weight="bold">Stage 1 — hard gates (any single failure = reject, no score)</text>
+      <g>
+        <rect x="30"  y="44" width="110" height="40" rx="5" fill="#fff" stroke="#1a1a1a"/>
+        <rect x="150" y="44" width="110" height="40" rx="5" fill="#fff" stroke="#1a1a1a"/>
+        <rect x="270" y="44" width="110" height="40" rx="5" fill="#fff" stroke="#1a1a1a"/>
+        <rect x="390" y="44" width="110" height="40" rx="5" fill="#fff" stroke="#1a1a1a"/>
+        <rect x="510" y="44" width="110" height="40" rx="5" fill="#fff" stroke="#1a1a1a"/>
+        <rect x="630" y="44" width="110" height="40" rx="5" fill="#fff" stroke="#1a1a1a"/>
+        <text x="85"  y="63" text-anchor="middle" font-size="12" class="mono">G1</text>
+        <text x="205" y="63" text-anchor="middle" font-size="12" class="mono">G2</text>
+        <text x="325" y="63" text-anchor="middle" font-size="12" class="mono">G3</text>
+        <text x="445" y="63" text-anchor="middle" font-size="12" class="mono">G4</text>
+        <text x="565" y="63" text-anchor="middle" font-size="12" class="mono">G5</text>
+        <text x="685" y="63" text-anchor="middle" font-size="12" class="mono">G6</text>
+        <text x="85"  y="77" text-anchor="middle" class="small">medium-native</text>
+        <text x="205" y="77" text-anchor="middle" class="small">idea present</text>
+        <text x="325" y="77" text-anchor="middle" class="small">concept = execution</text>
+        <text x="445" y="77" text-anchor="middle" class="small">ethics / license</text>
+        <text x="565" y="77" text-anchor="middle" class="small">voice</text>
+        <text x="685" y="77" text-anchor="middle" class="small">not a duplicate</text>
+      </g>
+      <text x="385" y="106" text-anchor="middle" class="small">all six true → proceed to scoring (default gate meanings shown; your DNA defines its own)</text>
+
+      <line x1="385" y1="112" x2="385" y2="132" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr6)"/>
+
+      <!-- stage 2: weighted bars -->
+      <text x="30" y="152" font-size="14" font-weight="bold">Stage 2 — weighted criteria (each scored 0–5 by the jury)</text>
+      <!-- bars: width = weight * 56 -->
+      <g font-size="12">
+        <text x="30" y="182">novelty</text>
+        <rect x="110" y="170" width="168" height="16" fill="#002fa7" rx="3"/>
+        <text x="286" y="183" class="small">× 3</text>
+
+        <text x="30" y="207">nuance</text>
+        <rect x="110" y="195" width="168" height="16" fill="#002fa7" rx="3"/>
+        <text x="286" y="208" class="small">× 3</text>
+
+        <text x="30" y="232">narrative</text>
+        <rect x="110" y="220" width="112" height="16" fill="#4a6bc4" rx="3"/>
+        <text x="230" y="233" class="small">× 2</text>
+
+        <text x="30" y="257">craft</text>
+        <rect x="110" y="245" width="56" height="16" fill="#8ba0d9" rx="3"/>
+        <text x="174" y="258" class="small">× 1</text>
+
+        <text x="30" y="282">wit</text>
+        <rect x="110" y="270" width="56" height="16" fill="#8ba0d9" rx="3"/>
+        <text x="174" y="283" class="small">× 1</text>
+      </g>
+      <text x="470" y="210" font-size="13">weighted total = Σ score × weight</text>
+      <text x="470" y="232" font-size="13">maximum = 5 × (3+3+2+1+1) = <tspan font-weight="bold">50</tspan></text>
+      <text x="470" y="254" class="small">weights are configuration, meanings are DNA</text>
+
+      <line x1="385" y1="298" x2="385" y2="318" stroke="#1a1a1a" stroke-width="1.5" marker-end="url(#arr6)"/>
+
+      <!-- stage 3: threshold scale -->
+      <text x="30" y="340" font-size="14" font-weight="bold">Stage 3 — thresholds → verdict</text>
+      <!-- scale from 0 (x=60) to 50 (x=710): 13 px per point -->
+      <rect x="60"  y="354" width="390" height="26" fill="#a02020" opacity=".85" rx="3"/>
+      <rect x="450" y="354" width="104" height="26" fill="#b8860b" opacity=".9"/>
+      <rect x="554" y="354" width="156" height="26" fill="#1a7a3a" opacity=".9" rx="3"/>
+      <text x="255" y="372" text-anchor="middle" font-size="13" fill="#fff">reject &lt; 30</text>
+      <text x="502" y="372" text-anchor="middle" font-size="13" fill="#fff">borderline</text>
+      <text x="632" y="372" text-anchor="middle" font-size="13" fill="#fff">strong ≥ 38</text>
+      <!-- ticks -->
+      <g class="small">
+        <text x="60"  y="400" text-anchor="middle">0</text>
+        <text x="450" y="400" text-anchor="middle">30</text>
+        <text x="554" y="400" text-anchor="middle">38</text>
+        <text x="710" y="400" text-anchor="middle">50</text>
+      </g>
+      <text x="385" y="422" text-anchor="middle" class="small">strong and borderline both go to the human gate — borderline arrives with the jury’s reservations attached</text>
+    </svg>
+    <figcaption>Fig. 4 — The scoring funnel, with the default rubric: gates, then weights, then thresholds.</figcaption>
+  </figure>
+
+  <p>The two-stage design encodes a specific belief about quality: some failures are not
+  compensable. A gorgeous, witty, technically perfect work that violates a hard gate — say, it’s
+  a duplicate, or it drops the required license — scores zero consideration. Points cannot buy
+  back a gate. Above the gates, the weights say what the practice values most: in the default
+  rubric, <em>novelty</em> and <em>nuance</em> together account for 60% of the possible total,
+  while <em>craft</em> is worth the least — a deliberate hedge against rewarding polish over
+  ideas.</p>
+
+  <p>The thresholds are tunable and honest about uncertainty. A <strong>strong</strong> work
+  (≥ 38/50 with all gates passed) and a <strong>borderline</strong> one (30–37) both reach the
+  human; the difference is framing, since the borderline verdict carries the jury’s specific
+  reservations. Below 30, the machine doesn’t bother the artist at all — it archives the work
+  and tries again.</p>
+
+  <h2>6 · The human gate</h2>
+
+  <p>Nothing hylon makes becomes public on its own authority. When a candidate survives the jury,
+  it lands in <code>workspace/pending/</code> and the artist is notified with a link to a local
+  dashboard, which renders the work in a sandboxed iframe next to its motivation and the jury’s
+  verdict. From there, the artist has three moves:</p>
+
+  <ul>
+    <li><strong>Approve</strong> — the only action in the entire system that writes to
+    <code>published/</code>, from which the public site is assembled (minus the private
+    <code>jury.json</code>).</li>
+    <li><strong>Reject, optionally with a note</strong> — the work is archived; the note joins the
+    guidance file the generator reads next round.</li>
+    <li><strong>Refine</strong> — the artist writes feedback and the generator reworks the piece
+    <em>in place</em>, re-submits to the jury, and waits at the gate again. A directed refinement
+    is never auto-rejected: you asked for it, so you get to see it.</li>
+  </ul>
+
+  <p>There is also a recovery path for accidents: if a work is fully generated but the jury call
+  fails, the finished piece is never deleted. It is parked in <code>orphaned/</code> — paid for,
+  complete, and recoverable — where the dashboard can send it back through the jury with one
+  click.</p>
+
+  <h2>7 · Why this shape</h2>
+
+  <p>The architecture keeps four promises, and everything above serves one of them:</p>
+
+  <ul>
+    <li><strong>The hard gate is sacred.</strong> The autonomous loop is write-only to
+    <code>pending/</code> and <code>rejected/</code>; publication requires a person.</li>
+    <li><strong>No model grades its own work.</strong> Generator and jury are different vendors,
+    and the verdict arithmetic belongs to neither.</li>
+    <li><strong>Taste is legible and versioned.</strong> The DNA is a text file in git. When the
+    bar changes, there is a diff.</li>
+    <li><strong>Spending is bounded by design.</strong> Time budget, dollar fuse, turn limit —
+    checked before work starts, not after it runs away.</li>
+  </ul>
+
+  <footer>
+    hylon — a generic autonomous art harness, extracted from
+    <a href="https://github.com/y-a-v-a/vana" style="color:var(--accent)">vana</a> by Vincent Bruijn (y-a-v-a).
+    This page is, in the project’s own spirit, fully self-contained: no external requests, no
+    cookies, no tracking.
+  </footer>
+
+</main>
+</body>
+</html>
