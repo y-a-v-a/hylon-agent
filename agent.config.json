@@ -7,7 +7,7 @@
     "generator": "anthropic/claude-sonnet-4.5",
     "jury": "minimax/minimax-m3"
   },
-  "generation": { "temperature": 1, "maxTokens": 32000 },
+  "generation": { "mode": "agentic", "maxTurns": 16, "temperature": 1, "maxTokens": 32000 },
   "rubric": {
     "gates": ["G1", "G2", "G3", "G4", "G5", "G6"],
     "weights": { "novelty": 3, "nuance": 3, "narrative": 2, "craft": 1, "wit": 1 },

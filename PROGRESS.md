@@ -66,6 +66,18 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
   argument), vercel.json CSP backstop, workspace scaffold. README +
   ARCHITECTURE rewritten for the generic harness. `npm run check` green.
 
+- **2026-07-29** — Restored the **agentic generator** on OpenRouter. New
+  `agentloop.ts`: a file-tool loop over OpenRouter tool calling
+  (`write_file`/`read_file`/`list_files`, sandboxed to the staging dir) so the
+  model writes its own files, reads them back, and self-corrects — the behavior
+  vana got from the Claude Agent SDK, now provider-agnostic. Tool errors are
+  fed back to the model instead of thrown; a premature stop with required files
+  missing earns a reminder turn; cost accumulates per turn. `generation.mode`
+  selects `"agentic"` (default) or `"single-shot"` (the delimited-section path,
+  kept for models without tool support); `generation.maxTurns` bounds the loop.
+  `openrouter.ts` refactored into `chatTurn()` (history + tools) with `chat()`
+  as the single-exchange wrapper the jury uses. 129 tests passing.
+
 ## To go live after cloning
 
 1. `cp .env.example .env` → set `OPENROUTER_API_KEY`.

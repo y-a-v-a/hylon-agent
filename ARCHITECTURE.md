@@ -15,11 +15,12 @@ The harness encodes **no taste of its own** — it *applies* `identity/DNA.md`.
               identity/DNA.md  +  catalogue.json   (operating system + dedup corpus)
                                     │
                                     ▼
-        GENERATOR — OpenRouter (models.generator)   one structured chat call returns
-        OPENROUTER_API_KEY                          ===META=== / ===MOTIVATION=== / ===HTML===;
-                                    │               the harness writes index.html +
-                                    │               motivation.md + meta.json
-                                    ▼
+        GENERATOR — OpenRouter (models.generator)   agentic file-tool loop (write_file/
+        OPENROUTER_API_KEY                          read_file/list_files, sandboxed to the
+                                    │               staging dir): the model writes index.html
+                                    │               + motivation.md + meta.json itself and
+                                    │               self-corrects. ("single-shot" fallback
+                                    ▼                mode for models without tool support)
         JURY — OpenRouter (models.jury)             applies the DNA rubric → gates + scores
         OPENROUTER_API_KEY                          (harness computes weighting + verdict)
                                     │
@@ -56,11 +57,12 @@ on the time budget or the $ fuse. Budgets live in `agent.config.json`.
 | Module | Responsibility |
 |---|---|
 | `config.ts` | Loads `agent.config.json` (zod-validated, absolute paths); `OPENROUTER_API_KEY` (required) and optional `SMTP_*` from env; the `Rubric` type + `maxWeighted()` |
-| `openrouter.ts` | The shared chat client: one POST per call, optional attribution headers, `usage: {include: true}` for provider-reported cost |
+| `openrouter.ts` | The shared chat client: `chatTurn()` (full message history + OpenAI-style tools, for the agent loop) and `chat()` (single system+user exchange, for the jury); optional attribution headers; `usage: {include: true}` for provider-reported cost |
+| `agentloop.ts` | The generator's agent loop: file tools (`write_file`/`read_file`/`list_files`) sandboxed to the staging dir (`resolveWorkPath` blocks traversal), tool errors returned to the model for self-correction, premature-stop reminders while required files are missing, per-turn cost accumulation, `maxTurns` bound |
 | `dna.ts` | Reads `identity/DNA.md` — the operating system for both agents (actionable error pointing at the template when missing) |
 | `catalogue.ts` | `catalogue.json`: living index, optionally seeded from `identity/catalogue.seed.json`; `catalogueDigest()` for prompts, `upsertEntry()` for lifecycle; feeds the duplicate gate |
 | `ids.ts` | `slugify` + `makeId` → candidate id `<UTC-date>-<title-slug>`; `isValidId` guards untrusted HTTP ids |
-| `generator.ts` | One OpenRouter call; prompt = DNA + catalogue digest + recent artist guidance; parses the three delimited sections and writes the files itself; `validateSelfContained()` blocks obvious external requests |
+| `generator.ts` | Drives the agent loop (default) or a single delimited-section call (`generation.mode`); prompt = DNA + catalogue digest + recent artist guidance; validates the three files either way; `validateSelfContained()` blocks obvious external requests |
 | `guidance.ts` | `identity/guidance.md` — artist guidance accumulated from reject-with-note. The **generator** reads recent entries; the **jury never reads it** |
 | `jury.ts` | One OpenRouter call (JSON mode) applying the DNA rubric; the **model supplies gate booleans + scores** (shape from config `rubric`), the **harness computes** weighting, gate-first logic, thresholds, and the verdict; verdicts carry `max_weighted` |
 | `cost.ts` | `CostMeter` (persists daily spend to `.agent-state.json`); OpenRouter pricing lookup as fallback when the provider didn't report cost; `fuseCheck` |

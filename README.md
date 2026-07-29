@@ -18,8 +18,10 @@ DNA  →  generate (OpenRouter model)  →  jury (different OpenRouter model)  �
                                         (the harness computes the verdict)    the local dashboard
 ```
 
-- **Generator** — writes a single self-contained `index.html` (plus a
-  motivation and metadata), in your DNA, with zero external requests.
+- **Generator** — an agentic file-tool loop (OpenRouter tool calling): the
+  model writes a single self-contained `index.html` (plus a motivation and
+  metadata) with its own `write_file`/`read_file` tools, reading its work back
+  and self-correcting before handing it in. Zero external requests in the work.
 - **Jury** — a *different* model grades it against your DNA's rubric. The
   model only supplies gate booleans and scores; the harness computes the
   weighting, thresholds, and verdict deterministically.
@@ -56,7 +58,7 @@ documented in [`ops/DAEMON.md`](ops/DAEMON.md) and [`ops/DEPLOY.md`](ops/DEPLOY.
 |---|---|
 | `name` | display name (dashboard, notifications, OpenRouter X-Title) |
 | `models.generator` / `models.jury` | **the OpenRouter model ids** for each agent — keep them different vendors so no model grades its own output |
-| `generation` | `temperature` / `maxTokens` for the generator call |
+| `generation` | `mode`: `"agentic"` (default — file-tool loop, needs a model with tool-calling support) or `"single-shot"` (one delimited completion, for models without tools); plus `maxTurns`, `temperature`, `maxTokens` (per turn) |
 | `rubric` | the jury's shape: hard-gate ids, scored dimensions + weights, `scoreMax`. Your DNA §8 defines what they *mean* — keep the two in sync |
 | `thresholds` | weighted-total cutoffs for `strong` / `borderline` (else reject) |
 | `interval`, `workBudget`, `costFuse` | wake schedule, per-wake time budget, $ ceilings per wake/day |

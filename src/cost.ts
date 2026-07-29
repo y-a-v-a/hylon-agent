@@ -34,6 +34,20 @@ export function usageCostUsd(pricing: ModelPricing, usage: Usage): number {
   return usage.prompt_tokens * pricing.prompt + usage.completion_tokens * pricing.completion;
 }
 
+/**
+ * Cost of one call: OpenRouter's reported cost, else pricing-table fallback.
+ * A failed pricing lookup logs and under-counts rather than losing work.
+ */
+export async function resolveCostUsd(model: string, usage: Usage): Promise<number> {
+  if (typeof usage.costUsd === "number") return usage.costUsd;
+  try {
+    return usageCostUsd(await getOpenRouterPricing(model), usage);
+  } catch (err) {
+    console.error(`[cost] pricing lookup failed for ${model}: ${(err as Error).message}`);
+    return 0;
+  }
+}
+
 export interface CostFuse {
   perWakeUsd: number;
   perDayUsd: number;

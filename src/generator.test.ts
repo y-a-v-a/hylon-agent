@@ -27,13 +27,26 @@ const FILES: GeneratedFiles = {
   },
 };
 
-test("task prompt embeds catalogue digest and the three section markers", () => {
+test("agentic task prompt (default) embeds the digest and the tool contract", () => {
   const task = buildGeneratorTask("- Some Catalogued Work (2020) — Source — Mechanism");
+  assert.match(task, /Some Catalogued Work/);
+  assert.match(task, /write_file/);
+  assert.match(task, /read your work back/i);
+  assert.match(task, /index\.html/);
+  assert.match(task, /motivation\.md/);
+  assert.match(task, /meta\.json/);
+  assert.match(task, /self-contained/i);
+  assert.doesNotMatch(task, /===META===/); // no section markers in agentic mode
+});
+
+test("single-shot task prompt embeds the digest and the three section markers", () => {
+  const task = buildGeneratorTask("- Some Catalogued Work (2020) — Source — Mechanism", "", "single-shot");
   assert.match(task, /Some Catalogued Work/);
   assert.match(task, /===META===/);
   assert.match(task, /===MOTIVATION===/);
   assert.match(task, /===HTML===/);
   assert.match(task, /self-contained/i);
+  assert.doesNotMatch(task, /write_file/);
 });
 
 test("buildGeneratorTask folds in accumulated guidance when present", () => {
@@ -46,8 +59,18 @@ test("buildGeneratorTask omits the guidance section when there is none", () => {
   assert.doesNotMatch(buildGeneratorTask("- Catalogued Work", ""), /accumulated guidance/i);
 });
 
-test("buildRefineTask embeds feedback, current files, and the output contract", () => {
+test("agentic refine task (default) points at the files on disk, not embedded copies", () => {
   const task = buildRefineTask("the canvas throws a TypeError on click — fix it", FILES);
+  assert.match(task, /TypeError on click/);
+  assert.match(task, /REFINEMENT/i);
+  assert.match(task, /self-contained/i);
+  assert.match(task, /Read the current files first/);
+  assert.match(task, /write_file/);
+  assert.doesNotMatch(task, /CURRENT_WORK/); // the model reads them itself
+});
+
+test("single-shot refine task embeds feedback, current files, and the output contract", () => {
+  const task = buildRefineTask("the canvas throws a TypeError on click — fix it", FILES, "single-shot");
   assert.match(task, /TypeError on click/);
   assert.match(task, /REFINEMENT/i);
   assert.match(task, /self-contained/i);

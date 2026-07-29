@@ -41,10 +41,20 @@ const ConfigSchema = z.object({
   }),
   generation: z
     .object({
+      /**
+       * "agentic" (default): a file-tool loop — the model writes/reads its own
+       * files and self-corrects; needs a model with tool-calling support.
+       * "single-shot": one completion carrying three delimited sections; for
+       * models without tool support.
+       */
+      mode: z.enum(["agentic", "single-shot"]).default("agentic"),
+      /** Agentic mode: max model turns per generation. */
+      maxTurns: z.number().int().positive().default(16),
       temperature: z.number().min(0).max(2).default(1),
+      /** Max output tokens per completion (per turn in agentic mode). */
       maxTokens: z.number().int().positive().default(32_000),
     })
-    .default({ temperature: 1, maxTokens: 32_000 }),
+    .default({ mode: "agentic", maxTurns: 16, temperature: 1, maxTokens: 32_000 }),
   rubric: RubricSchema,
   thresholds: z.object({
     strong: z.number(),

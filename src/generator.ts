@@ -5,8 +5,11 @@ import { loadConfig } from "./config.ts";
 import { loadDna } from "./dna.ts";
 import { catalogueDigest } from "./catalogue.ts";
 import { loadGuidance, recentGuidance } from "./guidance.ts";
-import { chat, type Usage } from "./openrouter.ts";
-import { getOpenRouterPricing, usageCostUsd } from "./cost.ts";
+import { chat } from "./openrouter.ts";
+import { runAgentLoop } from "./agentloop.ts";
+import { resolveCostUsd } from "./cost.ts";
+
+export type GenerationMode = "agentic" | "single-shot";
 
 // ── Generated metadata (the meta.json contract) ──────────────────────────────
 const MetaSchema = z.object({
@@ -18,6 +21,8 @@ const MetaSchema = z.object({
   license: z.string().min(1), // as the DNA prescribes, e.g. "CC BY-SA 4.0"
 });
 export type GeneratedMeta = z.infer<typeof MetaSchema>;
+
+export const REQUIRED_FILES = ["index.html", "motivation.md", "meta.json"];
 
 export interface GeneratedFiles {
   html: string;
@@ -48,21 +53,41 @@ export function buildGeneratorSystemPrompt(dna: string): string {
   ].join("\n");
 }
 
-/** The three-section response contract the generator must follow. */
-const OUTPUT_CONTRACT = `Return your answer as EXACTLY three sections, each introduced by its marker on a line of its own, in this order:
+/** The shared description of the three files every candidate consists of. */
+const FILES_SPEC = `1. **index.html** — the work itself, a complete page starting with <!doctype html>.
+
+2. **motivation.md** — 2 to 5 short paragraphs of markdown: the concept; which DNA principles it enacts (by ID); at least one named reference it answers; and how the *mechanism itself* is the argument (not decoration).
+
+3. **meta.json** — strict JSON, no comments:
+   {"title": string, "summary": string (one line), "mechanism": string (one line: the mechanism that carries the idea), "principles": string[] (DNA principle IDs), "references": string[] (named works/artists/sources), "license": string}`;
+
+/** Agentic mode: the model writes the files itself with its tools. */
+const TOOL_CONTRACT = `You have file tools (write_file, read_file, list_files) scoped to your working directory. Produce the candidate as exactly three files:
+
+${FILES_SPEC}
+
+Work like an artist with a studio: write the files, read your work back, and revise until it is right. When all three files are written and you are satisfied, reply WITHOUT tool calls, with a one-paragraph summary. Do not create unrelated files.`;
+
+/** Single-shot mode: the reply itself carries the three delimited sections. */
+const OUTPUT_CONTRACT = `Return your answer as EXACTLY three sections, each introduced by its marker on a line of its own, in this order — they correspond to these three files:
+
+${FILES_SPEC}
 
 ===META===
-Strict JSON, no comments, no markdown fences:
-{"title": string, "summary": string (one line), "mechanism": string (one line: the mechanism that carries the idea), "principles": string[] (DNA principle IDs), "references": string[] (named works/artists/sources), "license": string}
+(the strict JSON for meta.json)
 
 ===MOTIVATION===
-2 to 5 short paragraphs of markdown: the concept; which DNA principles it enacts (by ID); at least one named reference it answers; and how the *mechanism itself* is the argument (not decoration).
+(the markdown for motivation.md)
 
 ===HTML===
-The complete work as a single index.html, starting with <!doctype html>. No text before or after it.`;
+(the complete index.html, starting with <!doctype html>. No text before or after it.)`;
 
 /** The concrete task: produce one self-contained candidate. */
-export function buildGeneratorTask(digest: string, guidance = ""): string {
+export function buildGeneratorTask(
+  digest: string,
+  guidance = "",
+  mode: GenerationMode = "agentic",
+): string {
   return `Generate ONE new candidate artwork in the artistic DNA.
 
 The work is a single self-contained web page. Hard requirement: FULLY SELF-CONTAINED. All CSS and JS inline. NO external requests of any kind — no external \`src=\`, no \`<link href="http...">\`, no \`@import\`, no \`url(http...)\`, no web fonts, no \`fetch\`/\`XMLHttpRequest\`/\`WebSocket\`/\`EventSource\`, no analytics, no cookies, no trackers. Visibly state the license and attribution the DNA prescribes.
@@ -75,22 +100,40 @@ ${guidance ? `\nThe artist has given accumulated guidance from past rejections. 
 Do NOT duplicate any of these existing works:
 ${digest}
 
-${OUTPUT_CONTRACT}`;
+${mode === "agentic" ? TOOL_CONTRACT : OUTPUT_CONTRACT}`;
 }
 
 /** Task for an in-place refinement driven by the artist's feedback. */
-export function buildRefineTask(feedback: string, files: GeneratedFiles): string {
+export function buildRefineTask(
+  feedback: string,
+  files: GeneratedFiles,
+  mode: GenerationMode = "agentic",
+): string {
+  const requirements = `Revise the work to address the feedback. Requirements:
+- This is a REFINEMENT, not a new work — preserve the concept and identity unless the feedback explicitly asks to change it.
+- Keep the page FULLY SELF-CONTAINED: all CSS/JS inline, NO external requests of any kind (no external src/href, @import, url(http), fetch, etc.).
+- Update the motivation and meta only where the change affects them; keep the meta fields intact.
+- Still satisfy the DNA's hard gates and stay in its voice.`;
+
+  if (mode === "agentic") {
+    return `The current working directory holds the candidate artwork you previously generated (index.html, motivation.md, meta.json). The artist reviewed it and asked for this refinement:
+
+"""
+${feedback}
+"""
+
+${requirements}
+
+Read the current files first, then rewrite them in place with write_file (always the complete file). When done, reply WITHOUT tool calls, with a one-paragraph summary of what you changed. Do not create unrelated files and do not ask questions.`;
+  }
+
   return `You previously generated the candidate artwork below (index.html, motivation.md, meta.json). The artist reviewed it and asked for this refinement:
 
 """
 ${feedback}
 """
 
-Revise the work to address the feedback. Requirements:
-- This is a REFINEMENT, not a new work — preserve the concept and identity unless the feedback explicitly asks to change it.
-- Keep the page FULLY SELF-CONTAINED: all CSS/JS inline, NO external requests of any kind (no external src/href, @import, url(http), fetch, etc.).
-- Update the motivation and meta only where the change affects them; keep the meta fields intact.
-- Still satisfy the DNA's hard gates and stay in its voice.
+${requirements}
 
 === CURRENT meta.json ===
 ${JSON.stringify(files.meta, null, 2)}
@@ -106,7 +149,7 @@ Return the COMPLETE revised files (not a diff). Do not ask questions.
 ${OUTPUT_CONTRACT}`;
 }
 
-// ── Response parsing (pure, testable) ────────────────────────────────────────
+// ── Response parsing for single-shot mode (pure, testable) ───────────────────
 
 export interface RawSections {
   metaRaw: string;
@@ -207,25 +250,29 @@ export function readGeneratedFiles(dir: string): GeneratedFiles {
 
 // ── The generation step (integration; exercised by `npm run once` / refine) ──
 
-/** Cost of a call: OpenRouter's reported cost, else pricing-table fallback. */
-async function resolveCostUsd(model: string, usage: Usage): Promise<number> {
-  if (typeof usage.costUsd === "number") return usage.costUsd;
-  try {
-    return usageCostUsd(await getOpenRouterPricing(model), usage);
-  } catch (err) {
-    // Never lose a finished work over a pricing lookup; under-count instead.
-    console.error(`[generator] pricing lookup failed for ${model}: ${(err as Error).message}`);
-    return 0;
-  }
+/** Agentic mode: run the file-tool loop in `workDir`, then validate the files. */
+async function runAgentic(workDir: string, task: string): Promise<{ files: GeneratedFiles; costUsd: number }> {
+  const cfg = loadConfig();
+  const { costUsd } = await runAgentLoop({
+    model: cfg.models.generator,
+    system: buildGeneratorSystemPrompt(loadDna()),
+    task,
+    workDir,
+    requiredFiles: REQUIRED_FILES,
+    maxTurns: cfg.generation.maxTurns,
+    temperature: cfg.generation.temperature,
+    maxTokens: cfg.generation.maxTokens,
+  });
+  return { files: readGeneratedFiles(workDir), costUsd };
 }
 
-/** One OpenRouter call → parsed + validated files. */
-async function runGeneration(user: string): Promise<{ files: GeneratedFiles; costUsd: number }> {
+/** Single-shot mode: one call whose reply carries the three sections. */
+async function runSingleShot(workDir: string, task: string): Promise<{ files: GeneratedFiles; costUsd: number }> {
   const cfg = loadConfig();
   const { content, usage } = await chat({
     model: cfg.models.generator,
     system: buildGeneratorSystemPrompt(loadDna()),
-    user,
+    user: task,
     temperature: cfg.generation.temperature,
     maxTokens: cfg.generation.maxTokens,
   });
@@ -235,23 +282,29 @@ async function runGeneration(user: string): Promise<{ files: GeneratedFiles; cos
     motivation: sections.motivation,
     meta: parseMeta(sections.metaRaw),
   };
+  writeGeneratedFiles(workDir, files);
   return { files, costUsd: await resolveCostUsd(cfg.models.generator, usage) };
 }
 
 /** Produce a fresh candidate in `workDir`. */
 export async function generateCandidate(workDir: string): Promise<GenerationResult> {
   mkdirSync(workDir, { recursive: true });
-  const task = buildGeneratorTask(catalogueDigest(), recentGuidance(loadGuidance()));
-  const { files, costUsd } = await runGeneration(task);
-  writeGeneratedFiles(workDir, files);
+  const cfg = loadConfig();
+  const mode = cfg.generation.mode;
+  const task = buildGeneratorTask(catalogueDigest(), recentGuidance(loadGuidance()), mode);
+  const { files, costUsd } =
+    mode === "agentic" ? await runAgentic(workDir, task) : await runSingleShot(workDir, task);
   return { files, violations: validateSelfContained(files.html), costUsd };
 }
 
 /** Refine the existing candidate in `dir` in place, per the artist's feedback. */
 export async function refineCandidate(dir: string, feedback: string): Promise<GenerationResult> {
   if (!existsSync(dir)) throw new Error(`No candidate dir to refine: ${dir}`);
-  const current = readGeneratedFiles(dir);
-  const { files, costUsd } = await runGeneration(buildRefineTask(feedback, current));
-  writeGeneratedFiles(dir, files);
+  const cfg = loadConfig();
+  const mode = cfg.generation.mode;
+  const current = readGeneratedFiles(dir); // also validates before we touch anything
+  const task = buildRefineTask(feedback, current, mode);
+  const { files, costUsd } =
+    mode === "agentic" ? await runAgentic(dir, task) : await runSingleShot(dir, task);
   return { files, violations: validateSelfContained(files.html), costUsd };
 }
