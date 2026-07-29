@@ -43,6 +43,14 @@ export function buildEmail(
     "",
     `Verdict: ${verdict.verdict} — ${total}`,
     `Scores: ${scoresLine(verdict.scores)}`,
+    ...(verdict.panel && verdict.panel.length > 1
+      ? [
+          `Panel${verdict.unanimous ? " (unanimous)" : " (split)"}:`,
+          ...verdict.panel.map(
+            (o) => `  ${o.jury_model}: ${o.verdict} ${o.weighted_total}/${o.max_weighted}`,
+          ),
+        ]
+      : []),
     `Principles: ${verdict.principles_invoked.join(", ")}`,
     `References: ${meta.references.join("; ")}`,
     "",

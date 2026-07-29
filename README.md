@@ -64,7 +64,7 @@ documented in [`ops/DAEMON.md`](ops/DAEMON.md) and [`ops/DEPLOY.md`](ops/DEPLOY.
 | Key | What it does |
 |---|---|
 | `name` | display name (dashboard, notifications, OpenRouter X-Title) |
-| `models.generator` / `models.jury` | **the OpenRouter model ids** for each agent — keep them different vendors so no model grades its own output |
+| `models.generator` / `models.jury` | **the OpenRouter model ids**. `jury` is one model (string) or a **panel** of up to 5 (array, e.g. `["minimax/minimax-m3", "openai/gpt-4o", "google/gemini-2.5-flash"]`): each juror grades independently and in parallel; the harness aggregates by strict per-gate majority (ties fail — prefer odd panels) and median scores, and records every juror's full opinion in `jury.json`, on the dashboard, and in the email. Keep the generator and every juror on different vendors |
 | `generation` | `mode`: `"agentic"` (default — file-tool loop, needs a model with tool-calling support) or `"single-shot"` (one delimited completion, for models without tools); plus `maxTurns`, `temperature`, `maxTokens` (per turn) |
 | `technologies` | the palette. `apis`: browser APIs the generator is told are in bounds (SVG, Canvas 2D, WebGL, Web Audio, CSS animation by default — the only hard limit is still zero external requests). `libraries`: vendored libraries by name → file (e.g. `"threejs": "vendor/three.min.js"`); the generator uses a `<script data-vendor="name"></script>` placeholder and the harness inlines the source at render/build time. See [`vendor/README.md`](vendor/README.md) |
 | `rubric` | the jury's shape: hard-gate ids, scored dimensions + weights, `scoreMax`. Your DNA §8 defines what they *mean* — keep the two in sync |
@@ -119,7 +119,8 @@ dashboard as a colorized diff with **Ratify** / **Decline** (+note) buttons.
 ## Invariants (kept from vana)
 
 - **The hard gate is sacred** — nothing reaches `published/` without your click.
-- **Two vendors, always** — generator ≠ jury.
+- **Two vendors, always** — generator ≠ jury (and with a panel, no juror is the
+  generator; the aggregation math belongs to the harness, never to a model).
 - **Self-contained, enforced in layers** — a regex denylist at generation time,
   and a restrictive CSP + sandboxed iframe at render time.
 - **`jury.json` is private** — committed as the record, never published.

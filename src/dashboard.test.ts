@@ -184,6 +184,38 @@ test("renderOrphan tolerates a missing orphan record", () => {
   assert.match(html, /action="\/orphan\/2026-07-27-stranded\/rejury"/);
 });
 
+// ── jury panels ──────────────────────────────────────────────────────────────
+
+test("renderCandidate shows per-juror opinions for a panel verdict", () => {
+  const panelVerdict: JuryVerdict = {
+    ...verdict,
+    rationale: "Panel of 2 — 1 strong · 1 reject. Each juror's independent opinion is recorded.",
+    jury_model: "minimax/minimax-m3 + openai/gpt-4o",
+    unanimous: false,
+    panel: [
+      { ...verdict, jury_model: "minimax/minimax-m3", rationale: "JUROR_ONE_SAYS strong work" },
+      {
+        ...verdict,
+        jury_model: "openai/gpt-4o",
+        verdict: "reject",
+        weighted_total: 25,
+        rationale: "JUROR_TWO_SAYS derivative",
+        reservations: "the voice slips",
+      },
+    ],
+  };
+  const html = renderCandidate("2026-06-16-x", meta, panelVerdict, "m");
+  assert.match(html, /Panel opinions \(split\)/);
+  assert.match(html, /JUROR_ONE_SAYS/);
+  assert.match(html, /JUROR_TWO_SAYS/);
+  assert.match(html, /reject 25\/50/);
+  assert.match(html, /the voice slips/);
+});
+
+test("renderCandidate shows no panel section for a single-juror verdict", () => {
+  assert.doesNotMatch(renderCandidate("2026-06-16-x", meta, verdict, "m"), /Panel opinions/);
+});
+
 // ── DNA amendment petitions ──────────────────────────────────────────────────
 
 const amendment: AmendmentItem = {

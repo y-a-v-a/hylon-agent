@@ -65,7 +65,7 @@ on the time budget or the $ fuse. Budgets live in `agent.config.json`.
 | `generator.ts` | Drives the agent loop (default) or a single delimited-section call (`generation.mode`); prompt = DNA + catalogue digest + recent artist guidance; validates the three files either way; `validateSelfContained()` blocks obvious external requests |
 | `guidance.ts` | `identity/guidance.md` — artist guidance accumulated from reject-with-note. The **generator** reads recent entries; the **jury never reads it** |
 | `vendor.ts` | The technology palette's library half: `<script data-vendor="name">` placeholders validated against config, and the pinned library source (e.g. `vendor/three.min.js`) inlined at render/build time — the dashboard `/work` response and `buildSite()` — so stored works stay small while published works stay one self-contained file. `technologies.apis` is prompt plumbing in `generator.ts` |
-| `jury.ts` | One OpenRouter call (JSON mode) applying the DNA rubric; the **model supplies gate booleans + scores** (shape from config `rubric`), the **harness computes** weighting, gate-first logic, thresholds, and the verdict; verdicts carry `max_weighted` |
+| `jury.ts` | The configured jury — one model or a **panel of up to 5** (`models.jury` string or array) — each called in parallel (JSON mode) applying the DNA rubric; the **models supply gate booleans + scores** (shape from config `rubric`), the **harness computes** weighting, gate-first logic, thresholds, and the verdict. Panels aggregate deterministically (`aggregatePanel`): strict per-gate majority (ties fail), median scores, and every juror's full opinion recorded on the verdict (`panel`, `unanimous`); verdicts carry `max_weighted` |
 | `cost.ts` | `CostMeter` (persists daily spend to `.agent-state.json`); OpenRouter pricing lookup as fallback when the provider didn't report cost; `fuseCheck` |
 | `loop.ts` | `runWake()` — orchestration; routes to pending/rejected; writes `jury.json`; upserts the catalogue; `npm run once` |
 | `git.ts` | Scoped stage (`workspace/` + `catalogue.json`) + commit + optional push |
@@ -90,10 +90,19 @@ the OpenRouter contract.
 
 The generator and the jury should be **different vendors** so no model grades
 its own output — both are just OpenRouter model ids in `agent.config.json`.
-The jury only supplies *judgements*; all arithmetic and the pass/fail decision
-are computed deterministically in `jury.ts`, so the gate is testable and not at
-the mercy of a model doing weighted sums. The rubric *shape* (gate ids, score
-dimensions, weights, score ceiling) is config; the rubric *meaning* is DNA.
+The jury can be a **panel**: configure `models.jury` as an array (1–5) and each
+juror grades the candidate independently, blind to the others. The harness
+aggregates: a gate passes only on a strict majority (a tie fails — prefer odd
+panels), scores take the per-dimension median (so one outlier juror cannot
+swing the panel), and the verdict is derived from the aggregate exactly as for
+a single juror. Every opinion — including the dissents — is recorded on the
+verdict and shown on the dashboard and in the notification. A juror failure
+fails the whole jury call; the orphan mechanism keeps the finished work
+re-juriable. The jury only supplies *judgements*; all arithmetic and the
+pass/fail decision are computed deterministically in `jury.ts`, so the gate is
+testable and not at the mercy of a model doing weighted sums. The rubric
+*shape* (gate ids, score dimensions, weights, score ceiling) is config; the
+rubric *meaning* is DNA.
 
 ## Configuration & secrets
 

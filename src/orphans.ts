@@ -4,7 +4,7 @@ import { loadConfig, type Config } from "./config.ts";
 import { isValidId, isoDate } from "./ids.ts";
 import { readGeneratedFiles, type GeneratedMeta } from "./generator.ts";
 import { juryCandidate, type JuryVerdict } from "./jury.ts";
-import { CostMeter, getOpenRouterPricing, usageCostUsd } from "./cost.ts";
+import { CostMeter } from "./cost.ts";
 import { upsertEntry } from "./catalogue.ts";
 import { commitAndPush } from "./git.ts";
 import { withLock } from "./lock.ts";
@@ -114,9 +114,8 @@ export async function rejuryOrphan(
     if (tripped) throw new Error(`fuse: ${tripped}`);
 
     const files = readGeneratedFiles(src);
-    const pricing = await getOpenRouterPricing(cfg.models.jury);
-    const { verdict, usage } = await juryCandidate(id, files);
-    meter.add(usageCostUsd(pricing, usage));
+    const { verdict, costUsd: juryCostUsd } = await juryCandidate(id, files);
+    meter.add(juryCostUsd);
 
     // Only once the jury has actually returned do we touch the work: a second
     // failure leaves the orphan exactly where it was, still re-juriable.

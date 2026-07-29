@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig } from "./config.ts";
+import { loadConfig, normalizeJuryModels } from "./config.ts";
 import { runWake, type AcceptedContext } from "./loop.ts";
 import { sendCandidateEmail } from "./notify.ts";
 import { startDashboard } from "./dashboard.ts";
@@ -68,7 +68,7 @@ function main(): void {
   const intervalMs = cfg.interval.hours * 3_600_000;
   console.log(
     `[daemon] ${ts()} ${cfg.name} up. interval=${cfg.interval.hours}h work-budget=${cfg.workBudget.minutes}min ` +
-      `fuse=$${cfg.costFuse.perWakeUsd}/wake $${cfg.costFuse.perDayUsd}/day generator=${cfg.models.generator} jury=${cfg.models.jury}`,
+      `fuse=$${cfg.costFuse.perWakeUsd}/wake $${cfg.costFuse.perDayUsd}/day generator=${cfg.models.generator} jury=${normalizeJuryModels(cfg.models.jury).join(" + ")}`,
   );
 
   const scheduleNext = (ms: number): void => {

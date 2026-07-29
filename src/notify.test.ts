@@ -59,6 +59,27 @@ test("body shows 'none' when there are no reservations", () => {
   assert.match(body, /Reservations: none/);
 });
 
+test("panel verdicts list each juror's verdict in the body", () => {
+  const panelVerdict: JuryVerdict = {
+    ...verdict,
+    jury_model: "minimax/minimax-m3 + openai/gpt-4o",
+    unanimous: false,
+    panel: [
+      { ...verdict, jury_model: "minimax/minimax-m3" },
+      { ...verdict, jury_model: "openai/gpt-4o", verdict: "borderline", weighted_total: 33 },
+    ],
+  };
+  const { body } = buildEmail("id", meta, panelVerdict, "http://x");
+  assert.match(body, /Panel \(split\):/);
+  assert.match(body, /minimax\/minimax-m3: strong 40\/50/);
+  assert.match(body, /openai\/gpt-4o: borderline 33\/50/);
+});
+
+test("single-juror emails carry no panel section", () => {
+  const { body } = buildEmail("id", meta, verdict, "http://x");
+  assert.doesNotMatch(body, /Panel/);
+});
+
 test("refined variant flags the refinement in subject and body", () => {
   const { subject, body } = buildEmail("id", meta, verdict, "http://x", { refined: true }, "hylon");
   assert.match(subject, /refined/);

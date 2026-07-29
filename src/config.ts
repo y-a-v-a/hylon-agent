@@ -25,6 +25,11 @@ export function maxWeighted(rubric: Rubric): number {
   return rubric.scoreMax * Object.values(rubric.weights).reduce((a, b) => a + b, 0);
 }
 
+/** The jury panel as a list, whether configured as one model or several. */
+export function normalizeJuryModels(jury: string | string[]): string[] {
+  return Array.isArray(jury) ? jury : [jury];
+}
+
 const ConfigSchema = z.object({
   /** Display name of this agent (dashboard header, email subjects, X-Title). */
   name: z.string().min(1).default("agent"),
@@ -34,10 +39,16 @@ const ConfigSchema = z.object({
     perWakeUsd: z.number().positive(),
     perDayUsd: z.number().positive(),
   }),
-  /** OpenRouter model ids for both agents. Keep them different vendors. */
+  /**
+   * OpenRouter model ids. `jury` is one model (string) or a PANEL of 1–5
+   * (array): each juror grades independently, the harness aggregates by
+   * strict per-gate majority + median scores, and every opinion is recorded.
+   * Prefer odd panel sizes — gate ties fail conservatively. Keep the
+   * generator and every juror on different vendors.
+   */
   models: z.object({
     generator: z.string().min(1),
-    jury: z.string().min(1),
+    jury: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(5)]),
   }),
   generation: z
     .object({

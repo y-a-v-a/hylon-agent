@@ -1,9 +1,10 @@
 import { z } from "zod";
-import { loadConfig, maxWeighted, type Rubric } from "./config.ts";
+import { loadConfig, maxWeighted, normalizeJuryModels, type Rubric } from "./config.ts";
 import { loadDna } from "./dna.ts";
 import { catalogueDigest } from "./catalogue.ts";
 import type { GeneratedFiles } from "./generator.ts";
 import { chat, type Usage } from "./openrouter.ts";
+import { resolveCostUsd } from "./cost.ts";
 
 // The rubric (gate ids, score dimensions, weights) comes from agent.config.json;
 // the DNA document defines what the gates and dimensions MEAN. The model judges;
@@ -39,7 +40,14 @@ export interface JuryVerdict {
   reservations: string | null;
   revision_suggestion: string | null;
   jury_model: string;
+  /** Panel juries only: every juror's full independent opinion (the dissents). */
+  panel?: JurorOpinion[];
+  /** Panel juries only: whether all jurors reached the same verdict. */
+  unanimous?: boolean;
 }
+
+/** One juror's complete independent verdict (a JuryVerdict without panel data). */
+export type JurorOpinion = Omit<JuryVerdict, "panel" | "unanimous">;
 
 // ── Deterministic gate/score logic (pure, testable) ──────────────────────────
 export function computeWeightedTotal(scores: Scores, weights: Record<string, number>): number {
@@ -72,7 +80,7 @@ export function assembleVerdict(
   juryModel: string,
   rubric: Rubric,
   thresholds: { strong: number; borderline: number },
-): JuryVerdict {
+): JurorOpinion {
   const weighted_total = computeWeightedTotal(model.scores, rubric.weights);
   return {
     work_id: workId,
@@ -87,6 +95,72 @@ export function assembleVerdict(
     reservations: model.reservations,
     revision_suggestion: model.revision_suggestion,
     jury_model: juryModel,
+  };
+}
+
+// ── Panel aggregation (pure, testable) ───────────────────────────────────────
+// A panel of jurors grades independently; the harness — never a model —
+// combines the opinions. Gates: STRICT majority must pass (a tie fails —
+// conservative, so prefer odd panels). Scores: per-dimension median. The
+// aggregate verdict is then derived exactly like a single juror's. Every
+// opinion is kept on the verdict as the record of consensus and dissent.
+
+function median(values: number[]): number {
+  const s = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+function uniq(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+export function aggregatePanel(
+  opinions: JurorOpinion[],
+  rubric: Rubric,
+  thresholds: { strong: number; borderline: number },
+): JuryVerdict {
+  if (opinions.length === 0) throw new Error("aggregatePanel: no opinions");
+  if (opinions.length === 1) return opinions[0]!;
+  const n = opinions.length;
+
+  const gates: Gates = {};
+  for (const g of rubric.gates) {
+    gates[g] = opinions.filter((o) => o.gates[g] === true).length > n / 2;
+  }
+  const scores: Scores = {};
+  for (const d of Object.keys(rubric.weights)) {
+    scores[d] = median(opinions.map((o) => o.scores[d] ?? 0));
+  }
+  const weighted_total = Math.round(computeWeightedTotal(scores, rubric.weights) * 10) / 10;
+  const verdict = deriveVerdict(gates, rubric.gates, weighted_total, thresholds);
+
+  const tally = (["strong", "borderline", "reject"] as const)
+    .map((v) => [v, opinions.filter((o) => o.verdict === v).length] as const)
+    .filter(([, c]) => c > 0)
+    .map(([v, c]) => `${c} ${v}`)
+    .join(" · ");
+  const unanimous = opinions.every((o) => o.verdict === opinions[0]!.verdict);
+  const reservations = opinions
+    .filter((o) => o.reservations)
+    .map((o) => `${o.jury_model}: ${o.reservations}`)
+    .join("\n");
+
+  return {
+    work_id: opinions[0]!.work_id,
+    gates,
+    scores,
+    weighted_total,
+    max_weighted: maxWeighted(rubric),
+    verdict,
+    references_named: uniq(opinions.flatMap((o) => o.references_named)),
+    principles_invoked: uniq(opinions.flatMap((o) => o.principles_invoked)),
+    rationale: `Panel of ${n} — ${tally}${unanimous ? ", unanimous" : ""}. Each juror's independent opinion is recorded.`,
+    reservations: reservations || null,
+    revision_suggestion: opinions.find((o) => o.revision_suggestion)?.revision_suggestion ?? null,
+    jury_model: opinions.map((o) => o.jury_model).join(" + "),
+    panel: opinions,
+    unanimous,
   };
 }
 
@@ -181,25 +255,46 @@ export function parseJuryModelResponse(text: string, rubric: Rubric): JuryModelR
 // ── OpenRouter call (integration) ────────────────────────────────────────────
 export type { Usage };
 
-/** Grade a candidate. Returns the verdict plus token usage for the fuse. */
+/**
+ * Grade a candidate with the configured panel (1–5 jurors, in parallel). Every
+ * juror must return a usable opinion — a single failure throws, and the orphan
+ * mechanism keeps the finished work re-juriable. Returns the aggregate verdict,
+ * combined token usage, and the real total cost across all jurors.
+ */
 export async function juryCandidate(
   workId: string,
   files: GeneratedFiles,
-): Promise<{ verdict: JuryVerdict; usage: Usage }> {
+): Promise<{ verdict: JuryVerdict; usage: Usage; costUsd: number }> {
   const cfg = loadConfig();
-  const { content, usage } = await chat({
-    model: cfg.models.jury,
-    system: buildJurySystemPrompt(loadDna()),
-    user: buildJuryTask(
-      files,
-      catalogueDigest(),
-      cfg.rubric,
-      Object.keys(cfg.technologies.libraries),
-    ),
-    json: true,
-    temperature: 0.2,
-  });
-  const model = parseJuryModelResponse(content, cfg.rubric);
-  const verdict = assembleVerdict(workId, model, cfg.models.jury, cfg.rubric, cfg.thresholds);
-  return { verdict, usage };
+  const models = normalizeJuryModels(cfg.models.jury);
+  const system = buildJurySystemPrompt(loadDna());
+  const task = buildJuryTask(
+    files,
+    catalogueDigest(),
+    cfg.rubric,
+    Object.keys(cfg.technologies.libraries),
+  );
+  const results = await Promise.all(
+    models.map(async (model) => {
+      const { content, usage } = await chat({ model, system, user: task, json: true, temperature: 0.2 });
+      const opinion = assembleVerdict(
+        workId,
+        parseJuryModelResponse(content, cfg.rubric),
+        model,
+        cfg.rubric,
+        cfg.thresholds,
+      );
+      return { opinion, usage, costUsd: await resolveCostUsd(model, usage) };
+    }),
+  );
+  const verdict = aggregatePanel(
+    results.map((r) => r.opinion),
+    cfg.rubric,
+    cfg.thresholds,
+  );
+  const usage: Usage = {
+    prompt_tokens: results.reduce((s, r) => s + r.usage.prompt_tokens, 0),
+    completion_tokens: results.reduce((s, r) => s + r.usage.completion_tokens, 0),
+  };
+  return { verdict, usage, costUsd: results.reduce((s, r) => s + r.costUsd, 0) };
 }

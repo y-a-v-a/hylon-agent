@@ -256,6 +256,23 @@ export function renderOrphan(
   return shell(`${name} · ${meta.title}`, body, name);
 }
 
+/** Per-juror opinions for a panel verdict — omitted for single-juror verdicts. */
+function panelSection(verdict: JuryVerdict): string {
+  if (!verdict.panel || verdict.panel.length < 2) return "";
+  const rows = verdict.panel
+    .map(
+      (o) => `<div class="card">
+    <span class="badge ${o.verdict}">${o.verdict} ${o.weighted_total}/${o.max_weighted}</span>
+    <strong>${escapeHtml(o.jury_model)}</strong>
+    <div class="scores">${escapeHtml(scoresLine(o.scores))}</div>
+    <p>${escapeHtml(o.rationale)}</p>
+    ${o.reservations ? `<p class="muted"><strong>Reservations:</strong> ${escapeHtml(o.reservations)}</p>` : ""}
+  </div>`,
+    )
+    .join("\n");
+  return `<h2>Panel opinions${verdict.unanimous ? " (unanimous)" : " (split)"}</h2>\n${rows}`;
+}
+
 /** The work iframe + jury card, shared by the pending and resolved views. */
 function workAndJury(id: string, meta: GeneratedMeta, verdict: JuryVerdict): string {
   return `
@@ -265,7 +282,8 @@ function workAndJury(id: string, meta: GeneratedMeta, verdict: JuryVerdict): str
     <p><strong>Jury:</strong> ${escapeHtml(verdict.rationale)}</p>
     ${verdict.reservations ? `<p class="muted"><strong>Reservations:</strong> ${escapeHtml(verdict.reservations)}</p>` : ""}
     <p class="muted">Principles: ${escapeHtml(verdict.principles_invoked.join(", "))} · License: ${escapeHtml(meta.license)} · Jury: ${escapeHtml(verdict.jury_model)}</p>
-  </div>`;
+  </div>
+  ${panelSection(verdict)}`;
 }
 
 export function renderCandidate(

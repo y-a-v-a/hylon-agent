@@ -120,6 +120,20 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
   dimension names) are protected by prompt and by review warnings; the "NO
   AMENDMENT" outcome is honored; petitions are fuse-metered. 164 tests passing.
 
+- **2026-07-29** — **Jury panel** (branch `jury-panel`, stacked on
+  `self-amending-dna`). `models.jury` now accepts one model (string, the
+  default and minimum) or an array of up to 5. Jurors grade independently and
+  in parallel, blind to each other; the harness aggregates deterministically:
+  strict per-gate majority (ties fail — prefer odd panels), per-dimension
+  median scores (one outlier can't swing the panel), thresholds on the
+  aggregate. Every juror's full opinion — verdict, scores, rationale,
+  reservations — is recorded on the verdict (`panel`, `unanimous`), rendered
+  as "Panel opinions (split/unanimous)" on the dashboard, and listed in the
+  notification email. Juror cost is metered per model (`juryCandidate` now
+  returns the real combined cost); a juror failure fails the jury call and the
+  orphan path keeps the work. Single-juror verdicts keep the exact previous
+  shape. 175 tests passing.
+
 ## To go live after copying the template
 
 0. On GitHub: **Use this template** (or fork) → your own repo, then clone that.

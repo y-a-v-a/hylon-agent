@@ -33,7 +33,7 @@ test(
   { skip: process.env.OPENROUTER_API_KEY ? false : "OPENROUTER_API_KEY not set" },
   async () => {
     const cfg = loadConfig();
-    const { verdict, usage } = await juryCandidate("2026-06-16-live-contract", fixture);
+    const { verdict, usage, costUsd } = await juryCandidate("2026-06-16-live-contract", fixture);
 
     // gates are booleans for every configured gate
     for (const g of cfg.rubric.gates) {
@@ -58,7 +58,7 @@ test(
 
     console.error(
       `[test:live] ${verdict.jury_model}: ${verdict.verdict} ${verdict.weighted_total}/${verdict.max_weighted} ` +
-        `(${usage.prompt_tokens}+${usage.completion_tokens} tok)`,
+        `(${usage.prompt_tokens}+${usage.completion_tokens} tok, $${costUsd.toFixed(4)})`,
     );
   },
 );
