@@ -78,6 +78,15 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
   `openrouter.ts` refactored into `chatTurn()` (history + tools) with `chat()`
   as the single-exchange wrapper the jury uses. 129 tests passing.
 
+- **2026-07-29** — **Live validation against OpenRouter** (with the real
+  `OPENROUTER_API_KEY`): key valid; both configured models exist and
+  `anthropic/claude-sonnet-4.5` reports tool support. `npm run test:live`
+  (against a throwaway DNA, removed afterwards): the jury returned parseable
+  JSON and the harness computed `reject 26/50` — contract holds. Live
+  agent-loop smoke: Sonnet 4.5 wrote a file via `write_file`, read it back to
+  verify, and finished in 3 turns for $0.011 — the agentic path works
+  end-to-end.
+
 ## To go live after cloning
 
 1. `cp .env.example .env` → set `OPENROUTER_API_KEY`.
