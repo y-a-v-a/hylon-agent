@@ -64,6 +64,7 @@ on the time budget or the $ fuse. Budgets live in `agent.config.json`.
 | `ids.ts` | `slugify` + `makeId` → candidate id `<UTC-date>-<title-slug>`; `isValidId` guards untrusted HTTP ids |
 | `generator.ts` | Drives the agent loop (default) or a single delimited-section call (`generation.mode`); prompt = DNA + catalogue digest + recent artist guidance; validates the three files either way; `validateSelfContained()` blocks obvious external requests |
 | `guidance.ts` | `identity/guidance.md` — artist guidance accumulated from reject-with-note. The **generator** reads recent entries; the **jury never reads it** |
+| `vendor.ts` | The technology palette's library half: `<script data-vendor="name">` placeholders validated against config, and the pinned library source (e.g. `vendor/three.min.js`) inlined at render/build time — the dashboard `/work` response and `buildSite()` — so stored works stay small while published works stay one self-contained file. `technologies.apis` is prompt plumbing in `generator.ts` |
 | `jury.ts` | One OpenRouter call (JSON mode) applying the DNA rubric; the **model supplies gate booleans + scores** (shape from config `rubric`), the **harness computes** weighting, gate-first logic, thresholds, and the verdict; verdicts carry `max_weighted` |
 | `cost.ts` | `CostMeter` (persists daily spend to `.agent-state.json`); OpenRouter pricing lookup as fallback when the provider didn't report cost; `fuseCheck` |
 | `loop.ts` | `runWake()` — orchestration; routes to pending/rejected; writes `jury.json`; upserts the catalogue; `npm run once` |

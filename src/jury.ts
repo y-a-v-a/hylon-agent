@@ -120,12 +120,20 @@ export function buildJurySystemPrompt(dna: string): string {
   ].join("\n");
 }
 
-export function buildJuryTask(files: GeneratedFiles, digest: string, rubric: Rubric): string {
+export function buildJuryTask(
+  files: GeneratedFiles,
+  digest: string,
+  rubric: Rubric,
+  vendoredLibraries: string[] = [],
+): string {
   const gatesTemplate = rubric.gates.map((g) => `"${g}": bool`).join(", ");
   const scoresTemplate = Object.keys(rubric.weights)
     .map((k) => `"${k}": 0-${rubric.scoreMax}`)
     .join(", ");
-  return `Judge the candidate work below against the DNA's validation rubric.
+  const vendorNote = vendoredLibraries.length
+    ? `\nNote on vendored libraries: a tag like <script data-vendor="name"></script> (allowed names: ${vendoredLibraries.join(", ")}) is sanctioned — the harness inlines the full library source at render time, and the published work still makes zero external requests. Do not treat such a tag as an external dependency or an ethics violation; do judge whether using the library is justified by the idea.\n`
+    : "";
+  return `Judge the candidate work below against the DNA's validation rubric.${vendorNote}
 
 Return ONLY a JSON object (no prose, no markdown fences) with exactly these keys:
 {
@@ -182,7 +190,12 @@ export async function juryCandidate(
   const { content, usage } = await chat({
     model: cfg.models.jury,
     system: buildJurySystemPrompt(loadDna()),
-    user: buildJuryTask(files, catalogueDigest(), cfg.rubric),
+    user: buildJuryTask(
+      files,
+      catalogueDigest(),
+      cfg.rubric,
+      Object.keys(cfg.technologies.libraries),
+    ),
     json: true,
     temperature: 0.2,
   });

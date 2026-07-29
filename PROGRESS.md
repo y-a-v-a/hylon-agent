@@ -93,6 +93,19 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
   committed to git, and they belong in the operator's own repo. `git.push`
   ships as `false` so a fresh copy never pushes works at the blueprint.
 
+- **2026-07-29** — **Technology palette.** New `technologies` config section:
+  `apis` (SVG, Canvas 2D, WebGL, Web Audio, CSS animation by default) is prompt
+  plumbing that tells the generator what is in bounds — nothing was ever
+  *blocked* except network access, but the generator didn't know it. `libraries`
+  maps names to vendored files (e.g. `threejs → vendor/three.min.js`): the
+  generator writes `<script data-vendor="name"></script>` and the harness
+  inlines the pinned source at render/build time (dashboard `/work` +
+  `build:site`), so stored works stay small and published works stay one
+  self-contained file. Undeclared placeholders are self-containment violations;
+  the jury is told declared placeholders are sanctioned; vendor files are
+  checked before any generation spend. New `vendor.ts` + vendor/README.md.
+  141 tests passing.
+
 ## To go live after copying the template
 
 0. On GitHub: **Use this template** (or fork) → your own repo, then clone that.

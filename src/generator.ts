@@ -8,6 +8,7 @@ import { loadGuidance, recentGuidance } from "./guidance.ts";
 import { chat } from "./openrouter.ts";
 import { runAgentLoop } from "./agentloop.ts";
 import { resolveCostUsd } from "./cost.ts";
+import { ensureVendorFiles, validateVendorPlaceholders } from "./vendor.ts";
 
 export type GenerationMode = "agentic" | "single-shot";
 
@@ -53,6 +54,40 @@ export function buildGeneratorSystemPrompt(dna: string): string {
   ].join("\n");
 }
 
+// ── Technology palette (pure, testable) ──────────────────────────────────────
+// Human-readable labels + practical notes for the known API names. Unknown
+// names pass through as-is, so the palette is open-ended.
+const API_LABELS: Record<string, string> = {
+  svg: "inline SVG",
+  "canvas-2d": "Canvas 2D",
+  webgl: "WebGL",
+  webaudio: "Web Audio API (audio must start from a user gesture — browsers block autoplay)",
+  "css-animation": "CSS animations/transitions",
+  "web-animations": "Web Animations API",
+};
+
+/**
+ * The "materials" paragraph for the generator prompt: which browser APIs are
+ * in bounds and which vendored libraries may be pulled in via placeholder.
+ * Returns "" when the palette is empty (the prompt omits the section).
+ */
+export function buildTechnologyNotes(apis: string[], libraries: string[]): string {
+  if (apis.length === 0 && libraries.length === 0) return "";
+  const lines = ["Materials available to you (use what the idea needs, nothing more):"];
+  if (apis.length > 0) {
+    lines.push(`- Browser APIs: ${apis.map((a) => API_LABELS[a] ?? a).join(", ")}.`);
+  }
+  for (const name of libraries) {
+    lines.push(
+      `- Vendored library "${name}": to use it, place exactly <script data-vendor="${name}"></script> where the library must load. The harness replaces that tag with the full library source when the work is rendered — do NOT add a src attribute and do NOT paste the library code yourself.`,
+    );
+  }
+  lines.push(
+    "Everything must still run with zero external requests — the palette never overrides self-containment.",
+  );
+  return lines.join("\n");
+}
+
 /** The shared description of the three files every candidate consists of. */
 const FILES_SPEC = `1. **index.html** — the work itself, a complete page starting with <!doctype html>.
 
@@ -87,11 +122,12 @@ export function buildGeneratorTask(
   digest: string,
   guidance = "",
   mode: GenerationMode = "agentic",
+  techNotes = "",
 ): string {
   return `Generate ONE new candidate artwork in the artistic DNA.
 
 The work is a single self-contained web page. Hard requirement: FULLY SELF-CONTAINED. All CSS and JS inline. NO external requests of any kind — no external \`src=\`, no \`<link href="http...">\`, no \`@import\`, no \`url(http...)\`, no web fonts, no \`fetch\`/\`XMLHttpRequest\`/\`WebSocket\`/\`EventSource\`, no analytics, no cookies, no trackers. Visibly state the license and attribution the DNA prescribes.
-
+${techNotes ? `\n${techNotes}\n` : ""}
 Constraints:
 - Must clear every hard gate of the DNA's validation rubric.
 - Prefer the smallest build that completes the thought. Self-contained, client-side only.
@@ -108,12 +144,13 @@ export function buildRefineTask(
   feedback: string,
   files: GeneratedFiles,
   mode: GenerationMode = "agentic",
+  techNotes = "",
 ): string {
   const requirements = `Revise the work to address the feedback. Requirements:
 - This is a REFINEMENT, not a new work — preserve the concept and identity unless the feedback explicitly asks to change it.
 - Keep the page FULLY SELF-CONTAINED: all CSS/JS inline, NO external requests of any kind (no external src/href, @import, url(http), fetch, etc.).
 - Update the motivation and meta only where the change affects them; keep the meta fields intact.
-- Still satisfy the DNA's hard gates and stay in its voice.`;
+- Still satisfy the DNA's hard gates and stay in its voice.${techNotes ? `\n\n${techNotes}` : ""}`;
 
   if (mode === "agentic") {
     return `The current working directory holds the candidate artwork you previously generated (index.html, motivation.md, meta.json). The artist reviewed it and asked for this refinement:
@@ -286,15 +323,34 @@ async function runSingleShot(workDir: string, task: string): Promise<{ files: Ge
   return { files, costUsd: await resolveCostUsd(cfg.models.generator, usage) };
 }
 
+/** The configured palette as prompt notes; fails fast on broken vendor files. */
+function techNotesFromConfig(cfg: ReturnType<typeof loadConfig>): string {
+  ensureVendorFiles(cfg); // never spend on a generation whose libraries can't render
+  return buildTechnologyNotes(cfg.technologies.apis, Object.keys(cfg.technologies.libraries));
+}
+
+/** Self-containment plus vendored-placeholder validation. */
+function allViolations(cfg: ReturnType<typeof loadConfig>, html: string): string[] {
+  return [
+    ...validateSelfContained(html),
+    ...validateVendorPlaceholders(html, Object.keys(cfg.technologies.libraries)),
+  ];
+}
+
 /** Produce a fresh candidate in `workDir`. */
 export async function generateCandidate(workDir: string): Promise<GenerationResult> {
   mkdirSync(workDir, { recursive: true });
   const cfg = loadConfig();
   const mode = cfg.generation.mode;
-  const task = buildGeneratorTask(catalogueDigest(), recentGuidance(loadGuidance()), mode);
+  const task = buildGeneratorTask(
+    catalogueDigest(),
+    recentGuidance(loadGuidance()),
+    mode,
+    techNotesFromConfig(cfg),
+  );
   const { files, costUsd } =
     mode === "agentic" ? await runAgentic(workDir, task) : await runSingleShot(workDir, task);
-  return { files, violations: validateSelfContained(files.html), costUsd };
+  return { files, violations: allViolations(cfg, files.html), costUsd };
 }
 
 /** Refine the existing candidate in `dir` in place, per the artist's feedback. */
@@ -303,8 +359,8 @@ export async function refineCandidate(dir: string, feedback: string): Promise<Ge
   const cfg = loadConfig();
   const mode = cfg.generation.mode;
   const current = readGeneratedFiles(dir); // also validates before we touch anything
-  const task = buildRefineTask(feedback, current, mode);
+  const task = buildRefineTask(feedback, current, mode, techNotesFromConfig(cfg));
   const { files, costUsd } =
     mode === "agentic" ? await runAgentic(dir, task) : await runSingleShot(dir, task);
-  return { files, violations: validateSelfContained(files.html), costUsd };
+  return { files, violations: allViolations(cfg, files.html), costUsd };
 }

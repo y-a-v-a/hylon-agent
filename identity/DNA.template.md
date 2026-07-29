@@ -85,6 +85,10 @@ wrong thing.
 - **Medium:** works produced by this harness are single self-contained web
   pages — all CSS/JS inline, zero external requests. Add your own constraints
   on top (form factor, size, palette, interaction…).
+- **Technology palette:** the *available* technologies (browser APIs, vendored
+  libraries like Three.js) are declared in `agent.config.json` under
+  `technologies` — that is mechanics. Use this section for the taste side:
+  when a heavier technology is justified, and when restraint wins.
 - **License:** what every work must state, verbatim.
 - **Attribution:** who/what must be credited on the page.
 - **Tone:** the register the work itself must hold.

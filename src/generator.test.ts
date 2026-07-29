@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildGeneratorTask,
   buildRefineTask,
+  buildTechnologyNotes,
   parseGeneratedResponse,
   validateSelfContained,
   parseMeta,
@@ -57,6 +58,36 @@ test("buildGeneratorTask folds in accumulated guidance when present", () => {
 
 test("buildGeneratorTask omits the guidance section when there is none", () => {
   assert.doesNotMatch(buildGeneratorTask("- Catalogued Work", ""), /accumulated guidance/i);
+});
+
+// ── technology palette ───────────────────────────────────────────────────────
+
+test("buildTechnologyNotes lists APIs with labels and practical notes", () => {
+  const notes = buildTechnologyNotes(["svg", "webaudio", "some-future-api"], []);
+  assert.match(notes, /inline SVG/);
+  assert.match(notes, /Web Audio API .*user gesture/);
+  assert.match(notes, /some-future-api/); // unknown names pass through
+  assert.match(notes, /zero external requests/);
+});
+
+test("buildTechnologyNotes explains the vendored-library placeholder", () => {
+  const notes = buildTechnologyNotes([], ["threejs"]);
+  assert.match(notes, /<script data-vendor="threejs"><\/script>/);
+  assert.match(notes, /do NOT add a src attribute/);
+});
+
+test("buildTechnologyNotes is empty for an empty palette", () => {
+  assert.equal(buildTechnologyNotes([], []), "");
+});
+
+test("task builders fold in the technology notes when provided", () => {
+  const notes = buildTechnologyNotes(["webaudio"], ["threejs"]);
+  const gen = buildGeneratorTask("- W", "", "agentic", notes);
+  assert.match(gen, /Web Audio API/);
+  assert.match(gen, /data-vendor="threejs"/);
+  const refine = buildRefineTask("louder", FILES, "agentic", notes);
+  assert.match(refine, /Web Audio API/);
+  assert.doesNotMatch(buildGeneratorTask("- W"), /Web Audio API/); // omitted when absent
 });
 
 test("agentic refine task (default) points at the files on disk, not embedded copies", () => {

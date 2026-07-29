@@ -9,6 +9,7 @@ import { isValidId } from "./ids.ts";
 import { decide, type Decision } from "./promote.ts";
 import { runRefine, isRefining, markRefining } from "./refine.ts";
 import { listOrphans, readOrphanRecord, rejuryOrphan, type OrphanItem } from "./orphans.ts";
+import { makeInjector } from "./vendor.ts";
 
 // The refiner is injectable so tests can stub it (a real refine drives the generator).
 let refiner: (id: string, feedback: string) => Promise<void> = runRefine;
@@ -336,7 +337,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse, cfg: Con
       const work = join(dir, "index.html");
       if (!existsSync(work)) return send(res, 404, "text/html; charset=utf-8", renderNotFound(name));
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": WORK_CSP });
-      res.end(readFileSync(work, "utf8"));
+      res.end(makeInjector(cfg)(readFileSync(work, "utf8")));
       return;
     }
 
@@ -377,7 +378,7 @@ export async function handle(req: IncomingMessage, res: ServerResponse, cfg: Con
       const work = loc ? join(loc.dir, "index.html") : null;
       if (!work || !existsSync(work)) return send(res, 404, "text/html; charset=utf-8", renderNotFound(name));
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": WORK_CSP });
-      res.end(readFileSync(work, "utf8"));
+      res.end(makeInjector(cfg)(readFileSync(work, "utf8")));
       return;
     }
 

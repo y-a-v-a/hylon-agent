@@ -103,8 +103,15 @@ ${items}
 /**
  * Assemble the public site into `outDir`: each published work's PUBLIC_FILES
  * (never jury.json) plus the catalogue index. The output dir is rebuilt fresh.
+ * `inject` finalizes each work's index.html (vendored-library splicing) so the
+ * published file is complete and self-contained on its own.
  */
-export function buildSite(publishedRoot: string, outDir: string, site: SiteText = DEFAULT_SITE): { count: number } {
+export function buildSite(
+  publishedRoot: string,
+  outDir: string,
+  site: SiteText = DEFAULT_SITE,
+  inject: (html: string) => string = (html) => html,
+): { count: number } {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   const works = listPublished(publishedRoot);
@@ -113,7 +120,12 @@ export function buildSite(publishedRoot: string, outDir: string, site: SiteText 
     mkdirSync(dest, { recursive: true });
     for (const f of PUBLIC_FILES) {
       const src = join(publishedRoot, w.id, f);
-      if (existsSync(src)) copyFileSync(src, join(dest, f));
+      if (!existsSync(src)) continue;
+      if (f === "index.html") {
+        writeFileSync(join(dest, f), inject(readFileSync(src, "utf8")), "utf8");
+      } else {
+        copyFileSync(src, join(dest, f));
+      }
     }
   }
   writeFileSync(join(outDir, "index.html"), renderCatalogueIndex(works, site), "utf8");
@@ -123,7 +135,8 @@ export function buildSite(publishedRoot: string, outDir: string, site: SiteText 
 // CLI: `npm run build:site`
 if (import.meta.url === `file://${process.argv[1]}`) {
   const cfg = loadConfig();
+  const { makeInjector } = await import("./vendor.ts");
   const outDir = join(cfg.abs.root, "dist-site");
-  const { count } = buildSite(cfg.abs.published, outDir, cfg.site);
+  const { count } = buildSite(cfg.abs.published, outDir, cfg.site, makeInjector(cfg));
   console.log(`Built site: ${count} work(s) → ${outDir} (jury.json excluded)`);
 }

@@ -55,6 +55,22 @@ const ConfigSchema = z.object({
       maxTokens: z.number().int().positive().default(32_000),
     })
     .default({ mode: "agentic", maxTurns: 16, temperature: 1, maxTokens: 32_000 }),
+  /**
+   * The technology palette. `apis` are browser APIs the generator is told are
+   * in bounds (pure prompt plumbing — the only hard limit stays "zero external
+   * requests"). `libraries` maps a name to a vendored file in the repo, used
+   * via a `<script data-vendor="name"></script>` placeholder that the harness
+   * inlines at render/build time (see vendor.ts).
+   */
+  technologies: z
+    .object({
+      apis: z.array(z.string()).default(["svg", "canvas-2d", "webgl", "webaudio", "css-animation"]),
+      libraries: z.record(z.string().min(1), z.string().min(1)).default({}),
+    })
+    .default({
+      apis: ["svg", "canvas-2d", "webgl", "webaudio", "css-animation"],
+      libraries: {},
+    }),
   rubric: RubricSchema,
   thresholds: z.object({
     strong: z.number(),

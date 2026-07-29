@@ -66,6 +66,7 @@ documented in [`ops/DAEMON.md`](ops/DAEMON.md) and [`ops/DEPLOY.md`](ops/DEPLOY.
 | `name` | display name (dashboard, notifications, OpenRouter X-Title) |
 | `models.generator` / `models.jury` | **the OpenRouter model ids** for each agent — keep them different vendors so no model grades its own output |
 | `generation` | `mode`: `"agentic"` (default — file-tool loop, needs a model with tool-calling support) or `"single-shot"` (one delimited completion, for models without tools); plus `maxTurns`, `temperature`, `maxTokens` (per turn) |
+| `technologies` | the palette. `apis`: browser APIs the generator is told are in bounds (SVG, Canvas 2D, WebGL, Web Audio, CSS animation by default — the only hard limit is still zero external requests). `libraries`: vendored libraries by name → file (e.g. `"threejs": "vendor/three.min.js"`); the generator uses a `<script data-vendor="name"></script>` placeholder and the harness inlines the source at render/build time. See [`vendor/README.md`](vendor/README.md) |
 | `rubric` | the jury's shape: hard-gate ids, scored dimensions + weights, `scoreMax`. Your DNA §8 defines what they *mean* — keep the two in sync |
 | `thresholds` | weighted-total cutoffs for `strong` / `borderline` (else reject) |
 | `interval`, `workBudget`, `costFuse` | wake schedule, per-wake time budget, $ ceilings per wake/day |

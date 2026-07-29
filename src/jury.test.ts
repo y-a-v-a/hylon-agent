@@ -143,6 +143,19 @@ test("buildJuryTask embeds candidate html, motivation, meta, and rubric keys", (
   assert.match(task, /"novelty": 0-5/);
 });
 
+test("buildJuryTask sanctions declared vendored-library placeholders", () => {
+  const files = {
+    html: `<script data-vendor="threejs"></script>`,
+    motivation: "m",
+    meta: { title: "T", summary: "s", mechanism: "m", principles: ["P1"], references: ["R"], license: "L" },
+  };
+  const task = buildJuryTask(files, "-", RUBRIC, ["threejs"]);
+  assert.match(task, /allowed names: threejs/);
+  assert.match(task, /Do not treat such a tag as an external dependency/);
+  // and without vendored libraries the note is absent
+  assert.doesNotMatch(buildJuryTask(files, "-", RUBRIC), /vendored/i);
+});
+
 test("buildJuryTask reflects a custom rubric in the response template", () => {
   const files = {
     html: "<p>x</p>",
