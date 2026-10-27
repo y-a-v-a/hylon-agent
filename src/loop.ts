@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig } from "./config.ts";
+import { loadConfig, normalizeJuryModels } from "./config.ts";
 import { isoDate, makeId } from "./ids.ts";
 import { generateCandidate, type GeneratedMeta, type GenerationResult } from "./generator.ts";
 import { juryCandidate, type Verdict, type JuryVerdict } from "./jury.ts";
-import { CostMeter, getOpenRouterPricing, usageCostUsd } from "./cost.ts";
+import { CostMeter, getOpenRouterPricing } from "./cost.ts";
 import { upsertEntry, type CatalogueEntry } from "./catalogue.ts";
 import { commitAndPush } from "./git.ts";
 import { parkOrphan } from "./orphans.ts";
@@ -76,7 +76,8 @@ export async function runWake(opts: RunWakeOptions = {}): Promise<WakeResult> {
   const workRoot = ensureDirs(cfg);
   const today = isoDate(new Date());
   const meter = new CostMeter(join(cfg.abs.root, STATE_FILE), today, cfg.costFuse);
-  const juryPricing = await getOpenRouterPricing(cfg.models.jury);
+  // Fail fast (before any generation spend) if a configured juror doesn't exist.
+  await Promise.all(normalizeJuryModels(cfg.models.jury).map(getOpenRouterPricing));
   const deadline = Date.now() + cfg.workBudget.minutes * 60_000;
   const push = opts.push ?? cfg.git.push;
 
@@ -104,8 +105,8 @@ export async function runWake(opts: RunWakeOptions = {}): Promise<WakeResult> {
 
       // 2. Identify + jury
       id = uniqueId(makeId(gen.files.meta.title, new Date()), (x) => lifecycleExists(cfg, x));
-      const { verdict, usage } = await juryCandidate(id, gen.files);
-      meter.add(usageCostUsd(juryPricing, usage));
+      const { verdict, costUsd: juryCostUsd } = await juryCandidate(id, gen.files);
+      meter.add(juryCostUsd);
       writeFileSync(join(stage, "jury.json"), JSON.stringify(verdict, null, 2) + "\n", "utf8");
 
       // 3. Route

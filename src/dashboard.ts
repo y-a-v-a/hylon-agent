@@ -10,6 +10,13 @@ import { decide, type Decision } from "./promote.ts";
 import { runRefine, isRefining, markRefining } from "./refine.ts";
 import { listOrphans, readOrphanRecord, rejuryOrphan, type OrphanItem } from "./orphans.ts";
 import { makeInjector } from "./vendor.ts";
+import {
+  decideAmendment,
+  listPendingAmendments,
+  type AmendmentDecision,
+  type AmendmentItem,
+} from "./amend.ts";
+import { collapseOps, diffLines } from "./diff.ts";
 
 // The refiner is injectable so tests can stub it (a real refine drives the generator).
 let refiner: (id: string, feedback: string) => Promise<void> = runRefine;
@@ -28,6 +35,13 @@ type Decider = (id: string, decision: Decision, opts?: { push?: boolean; note?: 
 let decider: Decider = decide;
 export function setDecider(fn: Decider): void {
   decider = fn;
+}
+
+// And the amendment decider (a real one rewrites the DNA and commits).
+type AmendDecider = (id: string, decision: AmendmentDecision, opts?: { note?: string }) => Promise<unknown>;
+let amendDecider: AmendDecider = decideAmendment;
+export function setAmendDecider(fn: AmendDecider): void {
+  amendDecider = fn;
 }
 
 export interface PendingItem {
@@ -89,6 +103,13 @@ const STYLE = `
   .rejurybtn{background:#4a4a4a;color:#fff;border-color:#4a4a4a}
   .err{font:13px/1.5 monospace;color:#a02020;word-break:break-word}
   h2.section{margin-top:2.5rem;border-top:1px solid var(--line);padding-top:1.5rem}
+  .petition{background:#002fa7}
+  .diff{font:12px/1.55 ui-monospace,Menlo,monospace;background:#faf8f2;padding:1rem;border-radius:.3rem;overflow-x:auto;white-space:pre}
+  .diff .add{display:block;background:#e3f0e6;color:#14532d}
+  .diff .del{display:block;background:#f7e3e3;color:#7f1d1d}
+  .diff .ctx{display:block;color:#57534e}
+  .diff .gap{display:block;color:#a8a29e;font-style:italic}
+  .warnbox{border-left:3px solid #b8860b;background:#fff;padding:.6rem 1rem;margin:.8rem 0;font-size:.9rem}
 `;
 
 const DEFAULT_NAME = "agent";
@@ -122,7 +143,27 @@ function orphanSection(orphans: OrphanItem[]): string {
 ${rows}`;
 }
 
-export function renderIndex(items: PendingItem[], orphans: OrphanItem[] = [], name = DEFAULT_NAME): string {
+/** The petition section of the landing page — omitted when there is none. */
+function amendmentSection(amendments: AmendmentItem[]): string {
+  if (amendments.length === 0) return "";
+  const rows = amendments
+    .map(
+      (a) => `<div class="card">
+  <a href="/amendment/${encodeURIComponent(a.id)}"><strong>Amendment petition</strong></a>
+  <span class="badge petition">+${a.record.diff.added} −${a.record.diff.removed}</span>
+  <div class="muted">The agent proposes to amend the DNA, from ${a.record.signalCount} signal${a.record.signalCount === 1 ? "" : "s"} in your recent decisions. Nothing changes without your approval.</div>
+</div>`,
+    )
+    .join("\n");
+  return `<h2 class="section">DNA amendment (${amendments.length})</h2>\n${rows}`;
+}
+
+export function renderIndex(
+  items: PendingItem[],
+  orphans: OrphanItem[] = [],
+  name = DEFAULT_NAME,
+  amendments: AmendmentItem[] = [],
+): string {
   const rows = items
     .map(
       (it) => `<div class="card">
@@ -136,7 +177,50 @@ export function renderIndex(items: PendingItem[], orphans: OrphanItem[] = [], na
     items.length === 0
       ? `<p class="muted">No candidates awaiting confirmation.</p>`
       : `<h1>Pending (${items.length})</h1>${rows}`;
-  return shell(`${name} · pending`, `${pending}${orphanSection(orphans)}`, name);
+  return shell(
+    `${name} · pending`,
+    `${pending}${amendmentSection(amendments)}${orphanSection(orphans)}`,
+    name,
+  );
+}
+
+/** The diff between the current DNA and a proposed one, colorized. */
+export function renderDnaDiff(currentDna: string, proposedDna: string, context = 3): string {
+  const parts = collapseOps(diffLines(currentDna, proposedDna), context).map((o) => {
+    if (o.type === "gap") return `<span class="gap">⋯ ${o.count} unchanged line${o.count === 1 ? "" : "s"} ⋯</span>`;
+    const cls = o.type === "add" ? "add" : o.type === "del" ? "del" : "ctx";
+    const prefix = o.type === "add" ? "+ " : o.type === "del" ? "− " : "  ";
+    return `<span class="${cls}">${prefix}${escapeHtml(o.line) || " "}</span>`;
+  });
+  return `<div class="diff">${parts.join("")}</div>`;
+}
+
+/** A petition: rationale, warnings, the diff, and the ratify/decline forms. */
+export function renderAmendment(item: AmendmentItem, currentDna: string, name = DEFAULT_NAME): string {
+  const enc = encodeURIComponent(item.id);
+  const r = item.record;
+  const warnings = r.warnings.length
+    ? `<div class="warnbox"><strong>Review warnings:</strong><br>${r.warnings.map(escapeHtml).join("<br>")}</div>`
+    : "";
+  const body = `
+  <h1>Amendment petition <span class="badge petition">+${r.diff.added} −${r.diff.removed}</span></h1>
+  <p class="muted">Proposed ${escapeHtml(r.at.slice(0, 10))} from ${r.signalCount} signal${r.signalCount === 1 ? "" : "s"} (${r.published} published · ${r.rejected} rejected since the last petition) · drafted by ${escapeHtml(r.model)} · $${r.costUsd.toFixed(3)}</p>
+  <h2>Rationale</h2>
+  <pre>${escapeHtml(item.rationale)}</pre>
+  ${warnings}
+  <h2>Proposed change to the DNA</h2>
+  ${renderDnaDiff(currentDna, item.proposedDna)}
+  <div class="card">
+    <form method="POST" action="/amendment/${enc}/approve"><button class="approve" type="submit">Ratify → amend the DNA</button></form>
+  </div>
+  <div class="card">
+    <form method="POST" action="/amendment/${enc}/reject">
+      <label for="note">Decline — optional note (future petitions will not re-propose what you turn down)</label>
+      <textarea id="note" name="note" rows="2" placeholder="e.g. I don't want P3 weakened — the restraint stays"></textarea>
+      <button class="rejectbtn" type="submit">Decline</button>
+    </form>
+  </div>`;
+  return shell(`${name} · amendment`, body, name);
 }
 
 /** A stranded work: the work itself, why it never got a verdict, and a re-jury button. */
@@ -172,6 +256,23 @@ export function renderOrphan(
   return shell(`${name} · ${meta.title}`, body, name);
 }
 
+/** Per-juror opinions for a panel verdict — omitted for single-juror verdicts. */
+function panelSection(verdict: JuryVerdict): string {
+  if (!verdict.panel || verdict.panel.length < 2) return "";
+  const rows = verdict.panel
+    .map(
+      (o) => `<div class="card">
+    <span class="badge ${o.verdict}">${o.verdict} ${o.weighted_total}/${o.max_weighted}</span>
+    <strong>${escapeHtml(o.jury_model)}</strong>
+    <div class="scores">${escapeHtml(scoresLine(o.scores))}</div>
+    <p>${escapeHtml(o.rationale)}</p>
+    ${o.reservations ? `<p class="muted"><strong>Reservations:</strong> ${escapeHtml(o.reservations)}</p>` : ""}
+  </div>`,
+    )
+    .join("\n");
+  return `<h2>Panel opinions${verdict.unanimous ? " (unanimous)" : " (split)"}</h2>\n${rows}`;
+}
+
 /** The work iframe + jury card, shared by the pending and resolved views. */
 function workAndJury(id: string, meta: GeneratedMeta, verdict: JuryVerdict): string {
   return `
@@ -181,7 +282,8 @@ function workAndJury(id: string, meta: GeneratedMeta, verdict: JuryVerdict): str
     <p><strong>Jury:</strong> ${escapeHtml(verdict.rationale)}</p>
     ${verdict.reservations ? `<p class="muted"><strong>Reservations:</strong> ${escapeHtml(verdict.reservations)}</p>` : ""}
     <p class="muted">Principles: ${escapeHtml(verdict.principles_invoked.join(", "))} · License: ${escapeHtml(meta.license)} · Jury: ${escapeHtml(verdict.jury_model)}</p>
-  </div>`;
+  </div>
+  ${panelSection(verdict)}`;
 }
 
 export function renderCandidate(
@@ -317,7 +419,48 @@ export async function handle(req: IncomingMessage, res: ServerResponse, cfg: Con
   const name = cfg.name ?? DEFAULT_NAME;
 
   if (req.method === "GET" && parts.length === 0) {
-    return send(res, 200, "text/html; charset=utf-8", renderIndex(listPending(cfg), listOrphans(cfg), name));
+    return send(
+      res,
+      200,
+      "text/html; charset=utf-8",
+      renderIndex(listPending(cfg), listOrphans(cfg), name, listPendingAmendments(cfg)),
+    );
+  }
+
+  if (parts[0] === "amendment" && parts[1]) {
+    const id = decodeURIComponent(parts[1]);
+    if (!isValidId(id)) return send(res, 404, "text/html; charset=utf-8", renderNotFound(name));
+    const item = listPendingAmendments(cfg).find((a) => a.id === id);
+
+    if (req.method === "GET" && parts.length === 2) {
+      if (!item) {
+        res.writeHead(303, { Location: "/" });
+        return void res.end();
+      }
+      const currentDna = existsSync(cfg.abs.dna) ? readFileSync(cfg.abs.dna, "utf8") : "";
+      return send(res, 200, "text/html; charset=utf-8", renderAmendment(item, currentDna, name));
+    }
+
+    if (req.method === "POST" && (parts[2] === "approve" || parts[2] === "reject")) {
+      if (!item) return send(res, 409, "text/html; charset=utf-8", renderNotFound(name));
+      const decision: AmendmentDecision = parts[2] === "approve" ? "approve" : "reject";
+      let note: string | undefined;
+      if (decision === "reject") {
+        try {
+          note = parseFormBody(await readBody(req)).note?.trim() || undefined;
+        } catch {
+          note = undefined;
+        }
+      }
+      try {
+        await amendDecider(id, decision, note ? { note } : {});
+        res.writeHead(303, { Location: "/" });
+        res.end();
+      } catch {
+        send(res, 409, "text/html; charset=utf-8", renderNotFound(name));
+      }
+      return;
+    }
   }
 
   if (parts[0] === "orphan" && parts[1]) {

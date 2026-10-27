@@ -25,6 +25,10 @@ echo "── dashboard ───────────────────
 code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://localhost:$PORT/" 2>/dev/null || echo down)
 echo "  http://localhost:$PORT -> $code"
 
+ADMIN_PORT=$(node -p "(JSON.parse(require('fs').readFileSync('agent.config.json','utf8')).admin||{}).port||4747" 2>/dev/null || echo 4747)
+code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:$ADMIN_PORT/" 2>/dev/null || echo down)
+echo "  admin console http://localhost:$ADMIN_PORT -> $code (npm run admin)"
+
 echo "── wakes ────────────────────────────────"
 grep -E "wake (start|done|error)|^\[daemon\].* up\." logs/daemon.out.log 2>/dev/null | tail -4 || echo "  no log yet"
 

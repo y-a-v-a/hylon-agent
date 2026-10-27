@@ -4,7 +4,7 @@ import { loadConfig } from "./config.ts";
 import { isValidId, isoDate } from "./ids.ts";
 import { refineCandidate } from "./generator.ts";
 import { juryCandidate, type JuryVerdict } from "./jury.ts";
-import { CostMeter, getOpenRouterPricing, usageCostUsd } from "./cost.ts";
+import { CostMeter } from "./cost.ts";
 import { upsertEntry } from "./catalogue.ts";
 import { commitAndPush } from "./git.ts";
 import { withLock } from "./lock.ts";
@@ -64,9 +64,8 @@ export async function runRefine(
       const gen = await refineCandidate(dir, feedback);
       meter.add(gen.costUsd);
 
-      const pricing = await getOpenRouterPricing(cfg.models.jury);
-      const { verdict, usage } = await juryCandidate(id, gen.files);
-      meter.add(usageCostUsd(pricing, usage));
+      const { verdict, costUsd: juryCostUsd } = await juryCandidate(id, gen.files);
+      meter.add(juryCostUsd);
       writeFileSync(join(dir, "jury.json"), JSON.stringify(verdict, null, 2) + "\n", "utf8");
 
       appendRefineLog(dir, feedback, verdict, now);

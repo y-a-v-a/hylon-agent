@@ -8,9 +8,12 @@ import {
   renderResolved,
   renderNotFound,
   renderOrphan,
+  renderAmendment,
+  renderDnaDiff,
   type PendingItem,
 } from "./dashboard.ts";
 import type { OrphanItem } from "./orphans.ts";
+import type { AmendmentItem } from "./amend.ts";
 import { statusFor } from "./promote.ts";
 import type { GeneratedMeta } from "./generator.ts";
 import type { JuryVerdict } from "./jury.ts";
@@ -179,4 +182,88 @@ test("renderOrphan tolerates a missing orphan record", () => {
   const html = renderOrphan(orphan.id, meta, null, "");
   assert.match(html, /stranded \(no record\)/);
   assert.match(html, /action="\/orphan\/2026-07-27-stranded\/rejury"/);
+});
+
+// ── jury panels ──────────────────────────────────────────────────────────────
+
+test("renderCandidate shows per-juror opinions for a panel verdict", () => {
+  const panelVerdict: JuryVerdict = {
+    ...verdict,
+    rationale: "Panel of 2 — 1 strong · 1 reject. Each juror's independent opinion is recorded.",
+    jury_model: "minimax/minimax-m3 + openai/gpt-4o",
+    unanimous: false,
+    panel: [
+      { ...verdict, jury_model: "minimax/minimax-m3", rationale: "JUROR_ONE_SAYS strong work" },
+      {
+        ...verdict,
+        jury_model: "openai/gpt-4o",
+        verdict: "reject",
+        weighted_total: 25,
+        rationale: "JUROR_TWO_SAYS derivative",
+        reservations: "the voice slips",
+      },
+    ],
+  };
+  const html = renderCandidate("2026-06-16-x", meta, panelVerdict, "m");
+  assert.match(html, /Panel opinions \(split\)/);
+  assert.match(html, /JUROR_ONE_SAYS/);
+  assert.match(html, /JUROR_TWO_SAYS/);
+  assert.match(html, /reject 25\/50/);
+  assert.match(html, /the voice slips/);
+});
+
+test("renderCandidate shows no panel section for a single-juror verdict", () => {
+  assert.doesNotMatch(renderCandidate("2026-06-16-x", meta, verdict, "m"), /Panel opinions/);
+});
+
+// ── DNA amendment petitions ──────────────────────────────────────────────────
+
+const amendment: AmendmentItem = {
+  id: "2026-07-29-amendment",
+  record: {
+    id: "2026-07-29-amendment",
+    at: "2026-07-29T10:00:00.000Z",
+    model: "anthropic/claude-sonnet-4.5",
+    signalsThrough: "2026-07-29T10:00:00.000Z",
+    signalCount: 6,
+    published: 2,
+    rejected: 4,
+    warnings: ["gate G2 no longer mentioned"],
+    diff: { added: 4, removed: 2 },
+    costUsd: 0.021,
+    status: "pending",
+  },
+  rationale: "The artist consistently rejects <reverent> homage; the DNA should name the required bite.",
+  proposedDna: "# DNA\nline kept\nline changed NEW",
+};
+
+test("renderIndex omits the amendment section when there is none", () => {
+  assert.doesNotMatch(renderIndex([]), /Amendment/);
+});
+
+test("renderIndex lists a pending petition with its diff stat", () => {
+  const html = renderIndex([], [], "hylon", [amendment]);
+  assert.match(html, /DNA amendment \(1\)/);
+  assert.match(html, /href="\/amendment\/2026-07-29-amendment"/);
+  assert.match(html, /\+4 −2/);
+  assert.match(html, /Nothing changes without your approval/);
+});
+
+test("renderDnaDiff colorizes added and removed lines and escapes content", () => {
+  const html = renderDnaDiff("a\n<b>\nc", "a\n<b> changed\nc", 0);
+  assert.match(html, /class="del">− &lt;b&gt;</);
+  assert.match(html, /class="add">\+ &lt;b&gt; changed</);
+  assert.doesNotMatch(html, /<b>/);
+});
+
+test("renderAmendment shows rationale, warnings, diff, and ratify/decline forms", () => {
+  const html = renderAmendment(amendment, "# DNA\nline kept\nline changed OLD", "hylon");
+  assert.match(html, /rejects &lt;reverent&gt; homage/); // escaped rationale
+  assert.match(html, /gate G2 no longer mentioned/);
+  assert.match(html, /class="del"/);
+  assert.match(html, /class="add"/);
+  assert.match(html, /action="\/amendment\/2026-07-29-amendment\/approve"/);
+  assert.match(html, /action="\/amendment\/2026-07-29-amendment\/reject"/);
+  assert.match(html, /name="note"/);
+  assert.match(html, /6 signals/);
 });

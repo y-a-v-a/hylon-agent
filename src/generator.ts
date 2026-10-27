@@ -9,6 +9,7 @@ import { chat } from "./openrouter.ts";
 import { runAgentLoop } from "./agentloop.ts";
 import { resolveCostUsd } from "./cost.ts";
 import { ensureVendorFiles, validateVendorPlaceholders } from "./vendor.ts";
+import type { Purpose } from "./usage.ts";
 
 export type GenerationMode = "agentic" | "single-shot";
 
@@ -288,7 +289,11 @@ export function readGeneratedFiles(dir: string): GeneratedFiles {
 // ── The generation step (integration; exercised by `npm run once` / refine) ──
 
 /** Agentic mode: run the file-tool loop in `workDir`, then validate the files. */
-async function runAgentic(workDir: string, task: string): Promise<{ files: GeneratedFiles; costUsd: number }> {
+async function runAgentic(
+  workDir: string,
+  task: string,
+  purpose: Purpose,
+): Promise<{ files: GeneratedFiles; costUsd: number }> {
   const cfg = loadConfig();
   const { costUsd } = await runAgentLoop({
     model: cfg.models.generator,
@@ -299,12 +304,17 @@ async function runAgentic(workDir: string, task: string): Promise<{ files: Gener
     maxTurns: cfg.generation.maxTurns,
     temperature: cfg.generation.temperature,
     maxTokens: cfg.generation.maxTokens,
+    purpose,
   });
   return { files: readGeneratedFiles(workDir), costUsd };
 }
 
 /** Single-shot mode: one call whose reply carries the three sections. */
-async function runSingleShot(workDir: string, task: string): Promise<{ files: GeneratedFiles; costUsd: number }> {
+async function runSingleShot(
+  workDir: string,
+  task: string,
+  purpose: Purpose,
+): Promise<{ files: GeneratedFiles; costUsd: number }> {
   const cfg = loadConfig();
   const { content, usage } = await chat({
     model: cfg.models.generator,
@@ -312,6 +322,7 @@ async function runSingleShot(workDir: string, task: string): Promise<{ files: Ge
     user: task,
     temperature: cfg.generation.temperature,
     maxTokens: cfg.generation.maxTokens,
+    purpose,
   });
   const sections = parseGeneratedResponse(content);
   const files: GeneratedFiles = {
@@ -349,7 +360,9 @@ export async function generateCandidate(workDir: string): Promise<GenerationResu
     techNotesFromConfig(cfg),
   );
   const { files, costUsd } =
-    mode === "agentic" ? await runAgentic(workDir, task) : await runSingleShot(workDir, task);
+    mode === "agentic"
+      ? await runAgentic(workDir, task, "generate")
+      : await runSingleShot(workDir, task, "generate");
   return { files, violations: allViolations(cfg, files.html), costUsd };
 }
 
@@ -361,6 +374,6 @@ export async function refineCandidate(dir: string, feedback: string): Promise<Ge
   const current = readGeneratedFiles(dir); // also validates before we touch anything
   const task = buildRefineTask(feedback, current, mode, techNotesFromConfig(cfg));
   const { files, costUsd } =
-    mode === "agentic" ? await runAgentic(dir, task) : await runSingleShot(dir, task);
+    mode === "agentic" ? await runAgentic(dir, task, "refine") : await runSingleShot(dir, task, "refine");
   return { files, violations: allViolations(cfg, files.html), costUsd };
 }

@@ -25,6 +25,11 @@ export function maxWeighted(rubric: Rubric): number {
   return rubric.scoreMax * Object.values(rubric.weights).reduce((a, b) => a + b, 0);
 }
 
+/** The jury panel as a list, whether configured as one model or several. */
+export function normalizeJuryModels(jury: string | string[]): string[] {
+  return Array.isArray(jury) ? jury : [jury];
+}
+
 const ConfigSchema = z.object({
   /** Display name of this agent (dashboard header, email subjects, X-Title). */
   name: z.string().min(1).default("agent"),
@@ -34,10 +39,16 @@ const ConfigSchema = z.object({
     perWakeUsd: z.number().positive(),
     perDayUsd: z.number().positive(),
   }),
-  /** OpenRouter model ids for both agents. Keep them different vendors. */
+  /**
+   * OpenRouter model ids. `jury` is one model (string) or a PANEL of 1–5
+   * (array): each juror grades independently, the harness aggregates by
+   * strict per-gate majority + median scores, and every opinion is recorded.
+   * Prefer odd panel sizes — gate ties fail conservatively. Keep the
+   * generator and every juror on different vendors.
+   */
   models: z.object({
     generator: z.string().min(1),
-    jury: z.string().min(1),
+    jury: z.union([z.string().min(1), z.array(z.string().min(1)).min(1).max(5)]),
   }),
   generation: z
     .object({
@@ -76,22 +87,46 @@ const ConfigSchema = z.object({
     strong: z.number(),
     borderline: z.number(),
   }),
+  /**
+   * Self-amending DNA: the agent may PETITION to update identity/DNA.md when
+   * accumulated signals (rejection notes, refinement requests) suggest the
+   * artist's wishes have shifted. A petition is a proposal at the human gate —
+   * approval is the only thing that ever rewrites the DNA.
+   */
+  amendments: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** Minimum new signals since the last proposal before the agent may petition. */
+      minSignals: z.number().int().positive().default(5),
+      /** OpenRouter model for drafting proposals; empty = models.generator. */
+      model: z.string().default(""),
+    })
+    .default({ enabled: true, minSignals: 5, model: "" }),
   paths: z.object({
     dna: z.string(),
     catalogue: z.string(),
     catalogueSeed: z.string().default("identity/catalogue.seed.json"),
     guidance: z.string(),
+    amendments: z.string().default("identity/amendments"),
     pending: z.string(),
     published: z.string(),
     rejected: z.string(),
     // Works the generator finished but that never reached a verdict (see orphans.ts).
     orphaned: z.string().default("workspace/orphaned"),
+    /** Append-only ledger of every OpenRouter call (local telemetry, gitignored). */
+    usage: z.string().default("logs/usage.jsonl"),
   }),
   dashboard: z.object({
     port: z.number().int().positive(),
     /** Hostname used in emailed links (e.g. a tailnet host); empty = localhost. */
     host: z.string().default(""),
   }),
+  /**
+   * The read-only admin console (`npm run admin`): DNA, model roles, usage.
+   * Binds to 127.0.0.1 only — it shows environment details meant for the
+   * operator, so it never joins the dashboard on the tailnet.
+   */
+  admin: z.object({ port: z.number().int().positive().default(4747) }).default({ port: 4747 }),
   /** Recipient for notifications; empty = console-log instead of email. */
   email: z.object({ to: z.string() }).default({ to: "" }),
   git: z.object({ remote: z.string(), branch: z.string(), push: z.boolean().default(true) }),
@@ -119,10 +154,12 @@ export type Config = z.infer<typeof ConfigSchema> & {
     catalogue: string;
     catalogueSeed: string;
     guidance: string;
+    amendments: string;
     pending: string;
     published: string;
     rejected: string;
     orphaned: string;
+    usage: string;
   };
 };
 
@@ -137,24 +174,30 @@ export type Smtp = {
 
 let cached: Config | null = null;
 
-export function loadConfig(): Config {
-  if (cached) return cached;
-  const raw = JSON.parse(readFileSync(resolve(ROOT, "agent.config.json"), "utf8"));
+/** Validate a raw config object and resolve its paths against `root` (pure). */
+export function parseConfig(raw: unknown, root = ROOT): Config {
   const parsed = ConfigSchema.parse(raw);
-  cached = {
+  return {
     ...parsed,
     abs: {
-      root: ROOT,
-      dna: resolve(ROOT, parsed.paths.dna),
-      catalogue: resolve(ROOT, parsed.paths.catalogue),
-      catalogueSeed: resolve(ROOT, parsed.paths.catalogueSeed),
-      guidance: resolve(ROOT, parsed.paths.guidance),
-      pending: resolve(ROOT, parsed.paths.pending),
-      published: resolve(ROOT, parsed.paths.published),
-      rejected: resolve(ROOT, parsed.paths.rejected),
-      orphaned: resolve(ROOT, parsed.paths.orphaned),
+      root,
+      dna: resolve(root, parsed.paths.dna),
+      catalogue: resolve(root, parsed.paths.catalogue),
+      catalogueSeed: resolve(root, parsed.paths.catalogueSeed),
+      guidance: resolve(root, parsed.paths.guidance),
+      amendments: resolve(root, parsed.paths.amendments),
+      pending: resolve(root, parsed.paths.pending),
+      published: resolve(root, parsed.paths.published),
+      rejected: resolve(root, parsed.paths.rejected),
+      orphaned: resolve(root, parsed.paths.orphaned),
+      usage: resolve(root, parsed.paths.usage),
     },
   };
+}
+
+export function loadConfig(): Config {
+  if (cached) return cached;
+  cached = parseConfig(JSON.parse(readFileSync(resolve(ROOT, "agent.config.json"), "utf8")));
   return cached;
 }
 
@@ -178,10 +221,10 @@ export function loadOpenRouterKey(): string {
  * SMTP env is entirely absent (the harness then logs notifications instead).
  * Throws only when it is *partially* configured — that's a mistake worth surfacing.
  */
-export function loadSmtp(): Smtp | null {
-  const host = process.env.SMTP_HOST?.trim();
-  const user = process.env.SMTP_USER?.trim();
-  const pass = process.env.SMTP_PASS;
+export function loadSmtp(env: NodeJS.ProcessEnv = process.env): Smtp | null {
+  const host = env.SMTP_HOST?.trim();
+  const user = env.SMTP_USER?.trim();
+  const pass = env.SMTP_PASS;
   if (!host && !user && !pass) return null;
   const missing: string[] = [];
   if (!host) missing.push("SMTP_HOST");
@@ -190,14 +233,14 @@ export function loadSmtp(): Smtp | null {
   if (missing.length > 0) {
     throw new Error(`SMTP partially configured — missing ${missing.join(", ")} (see .env.example).`);
   }
-  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 465;
+  const port = env.SMTP_PORT ? Number(env.SMTP_PORT) : 465;
   return {
     host: host!,
     port,
     secure: port === 465,
     user: user!,
     pass: pass!,
-    from: process.env.SMTP_FROM?.trim() || user!,
+    from: env.SMTP_FROM?.trim() || user!,
   };
 }
 

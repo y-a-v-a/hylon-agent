@@ -1,10 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { loadConfig } from "./config.ts";
+import { loadConfig, normalizeJuryModels } from "./config.ts";
 import { runWake, type AcceptedContext } from "./loop.ts";
 import { sendCandidateEmail } from "./notify.ts";
 import { startDashboard } from "./dashboard.ts";
 import { withLock } from "./lock.ts";
+import { proposeAmendment } from "./amend.ts";
 
 // The long-running process: serves the approval dashboard continuously AND
 // wakes on the configured interval to generate → jury → notify. Designed to run
@@ -43,6 +44,20 @@ async function wake(): Promise<void> {
   } finally {
     waking = false;
   }
+
+  // After the wake, let the agent petition to amend the DNA if the artist's
+  // recent decisions have accumulated enough signals. A petition failure never
+  // affects the wake; the petition itself only ever lands at the human gate.
+  try {
+    const r = await withLock(() => proposeAmendment());
+    if (r.status === "proposed") {
+      console.log(`[daemon] ${ts()} amendment petition filed: ${r.id}`);
+    } else if (r.status !== "disabled" && r.status !== "below-threshold" && r.status !== "no-signals" && r.status !== "pending-exists") {
+      console.log(`[daemon] ${ts()} amendment check: ${r.status}${r.detail ? ` (${r.detail})` : ""}`);
+    }
+  } catch (err) {
+    console.error(`[daemon] ${ts()} amendment check failed: ${(err as Error).message}`);
+  }
 }
 
 function main(): void {
@@ -53,7 +68,7 @@ function main(): void {
   const intervalMs = cfg.interval.hours * 3_600_000;
   console.log(
     `[daemon] ${ts()} ${cfg.name} up. interval=${cfg.interval.hours}h work-budget=${cfg.workBudget.minutes}min ` +
-      `fuse=$${cfg.costFuse.perWakeUsd}/wake $${cfg.costFuse.perDayUsd}/day generator=${cfg.models.generator} jury=${cfg.models.jury}`,
+      `fuse=$${cfg.costFuse.perWakeUsd}/wake $${cfg.costFuse.perDayUsd}/day generator=${cfg.models.generator} jury=${normalizeJuryModels(cfg.models.jury).join(" + ")}`,
   );
 
   const scheduleNext = (ms: number): void => {

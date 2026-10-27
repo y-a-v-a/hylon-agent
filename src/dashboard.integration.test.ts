@@ -4,10 +4,11 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { handle, setRefiner, setDecider, setRejurier } from "./dashboard.ts";
+import { handle, setRefiner, setDecider, setRejurier, setAmendDecider } from "./dashboard.ts";
 import { isRefining, runRefine } from "./refine.ts";
 import { decide } from "./promote.ts";
 import { rejuryOrphan, writeOrphanRecord } from "./orphans.ts";
+import { decideAmendment } from "./amend.ts";
 import type { Config } from "./config.ts";
 
 // Drives the real request handler against a temp fixture with no socket and no
@@ -48,6 +49,7 @@ function fixtureConfig(root: string): Config {
       orphaned: join(root, "orphaned"),
       dna: join(root, "DNA.md"),
       catalogue: join(root, "catalogue.json"),
+      amendments: join(root, "amendments"),
     },
   } as unknown as Config;
 }
@@ -230,6 +232,72 @@ test("dashboard handler: routes, CSP, sandbox, traversal", async (t) => {
     await t.test("GET /orphan/:id for an unknown id → 404", async () => {
       const r = await request(cfg, "/orphan/2026-01-01-does-not-exist");
       assert.equal(r.statusCode, 404);
+    });
+
+    // ── DNA amendment petition routes ───────────────────────────────────────
+    const aid = "2026-07-29-amendment";
+    const adir = join(root, "amendments", "pending", aid);
+    mkdirSync(adir, { recursive: true });
+    writeFileSync(join(root, "DNA.md"), "# DNA\nline kept\nline OLD\n");
+    writeFileSync(join(adir, "proposal.md"), "AMEND_RATIONALE: the artist wants more bite.");
+    writeFileSync(join(adir, "DNA.proposed.md"), "# DNA\nline kept\nline NEW\n");
+    writeFileSync(
+      join(adir, "amendment.json"),
+      JSON.stringify({
+        id: aid,
+        at: "2026-07-29T10:00:00.000Z",
+        model: "test/model",
+        signalsThrough: "2026-07-29T10:00:00.000Z",
+        signalCount: 6,
+        published: 1,
+        rejected: 3,
+        warnings: [],
+        diff: { added: 1, removed: 1 },
+        costUsd: 0.02,
+        status: "pending",
+      }),
+    );
+
+    await t.test("GET / lists the pending petition", async () => {
+      const r = await request(cfg, "/");
+      assert.equal(r.statusCode, 200);
+      assert.match(r.body, /DNA amendment \(1\)/);
+      assert.match(r.body, /href="\/amendment\/2026-07-29-amendment"/);
+    });
+
+    await t.test("GET /amendment/:id renders rationale and diff against the current DNA", async () => {
+      const r = await request(cfg, `/amendment/${aid}`);
+      assert.equal(r.statusCode, 200);
+      assert.match(r.body, /AMEND_RATIONALE/);
+      assert.match(r.body, /line OLD/);
+      assert.match(r.body, /line NEW/);
+      assert.match(r.body, /Ratify/);
+    });
+
+    await t.test("GET /amendment traversal id → 404; unknown id → 303", async () => {
+      const bad = await request(cfg, `/amendment/${encodeURIComponent("../../etc/passwd")}`);
+      assert.equal(bad.statusCode, 404);
+      const unknown = await request(cfg, "/amendment/2026-01-01-amendment");
+      assert.equal(unknown.statusCode, 303);
+    });
+
+    await t.test("POST /amendment reject passes the note to the amendment decider", async () => {
+      const calls: { id: string; decision: string; note?: string }[] = [];
+      setAmendDecider(async (rid, decision, o) => {
+        calls.push({ id: rid, decision, note: o?.note });
+      });
+      try {
+        const res = mockRes();
+        await handle(
+          postReq(`/amendment/${aid}/reject`, "note=keep+the+restraint"),
+          res as unknown as ServerResponse,
+          cfg,
+        );
+        assert.equal(res.statusCode, 303);
+        assert.deepEqual(calls, [{ id: aid, decision: "reject", note: "keep the restraint" }]);
+      } finally {
+        setAmendDecider(decideAmendment);
+      }
     });
 
     await t.test("POST rejury 303s to the landing page and invokes the re-jurier", async () => {

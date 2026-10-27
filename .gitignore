@@ -14,6 +14,9 @@ logs/
 # daemon state (regenerable)
 .agent-state.json
 
+# admin console: cached OpenRouter model catalogue (regenerable)
+.cache/
+
 # generator staging area
 workspace/.work/
 
