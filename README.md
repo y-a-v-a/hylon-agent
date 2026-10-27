@@ -1,13 +1,17 @@
 # hylon
 
-**A generic autonomous art agent: feed it an artistic DNA, and it generates
-works, has an independent AI jury grade them, and publishes only what you
-approve.**
+**A blueprint for an autonomous art-agent harness: feed it an artistic DNA,
+and it generates works, has an independent AI jury grade them, and publishes
+only what you approve.**
 
 hylon is the generic extraction of [vana](https://github.com/y-a-v-a/vana) —
 the *process* without the person. The harness encodes **no taste of its own**:
 everything about what a work should be lives in one document you write,
-`identity/DNA.md`.
+`identity/DNA.md`. Everything else is the harness, the same for every artist:
+the generate → jury → approve loop, the budgets, the archive in git, and
+[three web interfaces](#three-interfaces) — a public catalogue for visitors, an
+approval gateway for the artist, and an admin console for whoever runs the
+machine.
 
 > **This repo is a blueprint, not an installation.** Don't run the agent from
 > this repository — make your own copy first. It's a GitHub template: click
@@ -40,6 +44,33 @@ DNA  →  generate (OpenRouter model)  →  jury (different OpenRouter model)  �
 
 Both agents run through **OpenRouter** with a single key, so any model pairing
 is one config edit away.
+
+## Three interfaces
+
+The harness faces three audiences, and each gets its own web interface:
+
+| Interface | For | Run it | Reachable from | Changes anything? |
+|---|---|---|---|---|
+| **Public catalogue** | visitors | `npm run build:site` → `dist-site/` on any static host (`vercel.json` included) | the web | no — static files |
+| **Approval gateway** (the dashboard) | the artist | `npm run dashboard`, or served by the daemon — http://localhost:4737 | your machine and its network (e.g. a tailnet) | **yes — the only control surface** |
+| **Admin console** | the operator | `npm run admin` — http://localhost:4747 | 127.0.0.1 only | no — read-only |
+
+- **The public catalogue** is what the world sees: the approved works, each
+  with its motivation, on an index page whose text comes from config `site`.
+  Works are served under a restrictive CSP and make no external requests; the
+  jury's verdict (`jury.json`) is never published. See
+  [`ops/DEPLOY.md`](ops/DEPLOY.md).
+- **The approval gateway** is the hard human gate. It lists the pending
+  candidates and renders each in a sandboxed iframe beside its motivation and
+  the jury's verdict, every juror's opinion and dissent included. Here you
+  approve, reject (with a note the generator learns from), ask for a
+  refinement, re-jury orphans, and ratify or decline the agent's DNA
+  petitions. Notifications link here.
+- **The admin console** is the instrument panel: what the artistic DNA
+  currently is and whether the rubric in config still matches it, how the DNA
+  has changed, which OpenRouter model is used for what, whether each one fits
+  its role, and what it all costs. It only reads — see
+  [The admin console](#the-admin-console).
 
 ## Quickstart
 
@@ -119,14 +150,6 @@ dashboard as a colorized diff with **Ratify** / **Decline** (+note) buttons.
   after each wake. Force one anytime with `npm run amend`.
 
 ## The admin console
-
-hylon has three web interfaces:
-
-| Interface | Command | For | Reachable from |
-|---|---|---|---|
-| Public catalogue | `npm run build:site` → any static host | visitors: the approved works | the web |
-| Approval gateway | `npm run dashboard` (or the daemon) | the artist: approve / reject / refine / ratify | localhost or your tailnet |
-| **Admin console** | `npm run admin` | the operator: what is the DNA, which model does what | **127.0.0.1 only** |
 
 The admin console (`src/admin.ts`, http://localhost:4747) is **read-only**: it
 never writes the DNA, the config, or the workspace — ratifying a petition stays
