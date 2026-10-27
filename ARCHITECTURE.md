@@ -57,7 +57,8 @@ on the time budget or the $ fuse. Budgets live in `agent.config.json`.
 | Module | Responsibility |
 |---|---|
 | `config.ts` | Loads `agent.config.json` (zod-validated, absolute paths); `OPENROUTER_API_KEY` (required) and optional `SMTP_*` from env; the `Rubric` type + `maxWeighted()` |
-| `openrouter.ts` | The shared chat client: `chatTurn()` (full message history + OpenAI-style tools, for the agent loop) and `chat()` (single system+user exchange, for the jury); optional attribution headers; `usage: {include: true}` for provider-reported cost |
+| `openrouter.ts` | The shared chat client: `chatTurn()` (full message history + OpenAI-style tools, for the agent loop) and `chat()` (single system+user exchange, for the jury); optional attribution headers; `usage: {include: true}` for provider-reported cost; every call (ok or failed) is appended to the usage ledger, tagged with its `purpose` and `run` |
+| `usage.ts` | The usage ledger (`logs/usage.jsonl`): one line per OpenRouter call — model, purpose (`generate` / `refine` / `jury` / `amend`), run id, tokens, cost, latency, upstream provider, generation id. Best-effort writes; pure parsing and aggregation (`summarizeUsage`, `dailyUsage`) for the admin console |
 | `agentloop.ts` | The generator's agent loop: file tools (`write_file`/`read_file`/`list_files`) sandboxed to the staging dir (`resolveWorkPath` blocks traversal), tool errors returned to the model for self-correction, premature-stop reminders while required files are missing, per-turn cost accumulation, `maxTurns` bound |
 | `dna.ts` | Reads `identity/DNA.md` — the operating system for both agents (actionable error pointing at the template when missing) |
 | `catalogue.ts` | `catalogue.json`: living index, optionally seeded from `identity/catalogue.seed.json`; `catalogueDigest()` for prompts, `upsertEntry()` for lifecycle; feeds the duplicate gate |
@@ -68,7 +69,7 @@ on the time budget or the $ fuse. Budgets live in `agent.config.json`.
 | `jury.ts` | The configured jury — one model or a **panel of up to 5** (`models.jury` string or array) — each called in parallel (JSON mode) applying the DNA rubric; the **models supply gate booleans + scores** (shape from config `rubric`), the **harness computes** weighting, gate-first logic, thresholds, and the verdict. Panels aggregate deterministically (`aggregatePanel`): strict per-gate majority (ties fail), median scores, and every juror's full opinion recorded on the verdict (`panel`, `unanimous`); verdicts carry `max_weighted` |
 | `cost.ts` | `CostMeter` (persists daily spend to `.agent-state.json`); OpenRouter pricing lookup as fallback when the provider didn't report cost; `fuseCheck` |
 | `loop.ts` | `runWake()` — orchestration; routes to pending/rejected; writes `jury.json`; upserts the catalogue; `npm run once` |
-| `git.ts` | Scoped stage (`workspace/` + `catalogue.json`) + commit + optional push |
+| `git.ts` | Scoped stage (`workspace/` + `catalogue.json`) + commit + optional push; read-only history helpers (`fileHistory`, `fileAt`, `fileStatus`) for the admin console |
 | `smtp.ts` | Dependency-free SMTP-over-implicit-TLS (465) client |
 | `notify.ts` | `buildEmail()` + `sendCandidateEmail()`; falls back to console logging when SMTP/email is not configured |
 | `dashboard.ts` | `node:http` server: pending list, candidate view (sandboxed iframe + CSP), Approve / Reject (+note) / Refine, orphan recovery, status pages |
@@ -80,9 +81,16 @@ on the time budget or the $ fuse. Budgets live in `agent.config.json`.
 | `lock.ts` | In-process mutex so a refine and a scheduled wake never run at once |
 | `site.ts` | `buildSite()` — assembles `dist-site/`; copies `index.html` + `motivation.md` + `meta.json`, **never `jury.json`**; catalogue index text from config `site` |
 | `daemon.ts` | Long-running process: serves the dashboard + self-schedules wakes; launchd target |
+| `admin.ts` | The **admin console** (`npm run admin`, 127.0.0.1 only, read-only): gathers the DNA, its history, the model roles, the ledger, the jury's record, the daemon's state and the environment, and serves them as pages + JSON. Every outside dependency (catalogue, key, git, process probes, clock, env) is injected, so routes test hermetically |
+| `adminview.ts` | Pure HTML rendering for the console, in the dashboard's idiom (escaped template strings, no framework); inline-SVG charts with one tooltip script |
+| `markdown.ts` | Dependency-free markdown → HTML (frontmatter, headings + TOC ids, nested lists, quotes, fences, tables, emphasis, safe links) for rendering the DNA, guidance and petitions |
+| `dnainfo.ts` | Reads a DNA the way the harness depends on it: principles, gate and dimension definitions, stated weights and thresholds — cross-checked against `rubric`/`thresholds` in config (the coupling the template asks you to keep) |
+| `models.ts` | The role map (`modelUses`: which model serves which purpose, called how — resolved exactly as generator/jury/amend resolve it), OpenRouter catalogue/endpoints/key lookups with memo + offline disk cache, per-role fitness checks and the model invariants, roster history from config revisions |
+| `insights.ts` | Read-back of the record: every work and who settled its fate, per-juror stats (dissent, agreement with the artist), the rubric in practice, daemon-log parsing and the next-wake estimate |
+| `health.ts` | The `Check` vocabulary (ok / info / warn / fail) the console ranks |
 
 Pure logic is unit-tested with `node:test` + `node:assert` — no test framework
-dependency. `npm test` (118 tests); `npm run check` = typecheck + tests +
+dependency. `npm test` (251 tests); `npm run check` = typecheck + tests +
 build:site. `npm run test:live` makes one real jury call (~$0.005) to verify
 the OpenRouter contract.
 
@@ -107,7 +115,8 @@ rubric *meaning* is DNA.
 ## Configuration & secrets
 
 - `agent.config.json` — name, models, generation params, rubric, thresholds,
-  interval/budgets/fuse, lifecycle paths, dashboard port + link host,
+  interval/budgets/fuse, lifecycle paths (+ the usage ledger), dashboard port +
+  link host, admin console port,
   notification recipient, git remote/branch, public-site text.
 - Environment (`.env` or shell): `OPENROUTER_API_KEY` (required, both agents),
   `SMTP_HOST`/`SMTP_USER`/`SMTP_PASS`/`SMTP_PORT`/`SMTP_FROM` (optional email).
@@ -134,3 +143,5 @@ rubric *meaning* is DNA.
 - **Untrusted ids are validated** — an HTTP-supplied candidate id must pass
   `isValidId` before it is joined into any lifecycle path.
 - **The budget is a fuse, not a target** — time first, dollars as the backstop.
+- **The admin console only reads** — it binds to 127.0.0.1, answers GET/HEAD
+  only, and has no code path that writes the DNA, the config, or the workspace.

@@ -134,6 +134,34 @@ stripped. Feed it a fresh `identity/DNA.md` and it runs.
   orphan path keeps the work. Single-juror verdicts keep the exact previous
   shape. 175 tests passing.
 
+- **2026-10-26** — **Admin console** (branch `admin-console`, stacked on
+  `jury-panel`). A third web interface next to the public catalogue and the
+  approval gateway: `npm run admin` → http://localhost:4747, bound to
+  127.0.0.1, GET-only, read-only by design (ratification stays the only writer
+  of the DNA). It answers *what is the DNA right now* — rendered document,
+  principles, the rubric cross-checked against config (`dnainfo.ts`), gate
+  failures and mean scores in practice, a dot plot of works against the
+  thresholds, and the DNA's history of commits and petitions with diffs — and
+  *which OpenRouter model does what* — the role map as the harness resolves it
+  (`models.ts`), per-role fitness checks against OpenRouter's catalogue (tool
+  calling, JSON mode, temperature, max_tokens, context, expiry), the model
+  invariants, 30-day spend by purpose, per-juror records (dissent, agreement
+  with the artist), roster history from git, a fitness lookup for any model id,
+  and the exact prompts each role receives. New **usage ledger**
+  (`usage.ts`): `chatTurn` appends every OpenRouter call — purpose, model, run,
+  tokens, cost, latency, provider — to `logs/usage.jsonl`; `purpose` is threaded
+  through the generator, agent loop, jury and amendment calls. Also:
+  `parseConfig()` in config.ts, `loadSmtp(env)`, read-only
+  git helpers, `listArchivedAmendments` + `amendmentTask` in amend.ts, and a
+  dependency-free markdown renderer. Building it surfaced that hylon and vana
+  both default to dashboard port 4737 — the console now flags a gateway port
+  answered by a different agent, and only counts daemons running from its own
+  repo. An independent review pass then tightened the derived facts (jurors
+  must be exact catalogue ids, as the wake pre-flight requires; wake errors
+  are read from stderr's log too; the daemon's own logged interval drives the
+  next-wake estimate; refined/re-juried works count as the artist's call) and
+  the DNA coupling patterns. 251 tests passing.
+
 ## To go live after copying the template
 
 0. On GitHub: **Use this template** (or fork) → your own repo, then clone that.

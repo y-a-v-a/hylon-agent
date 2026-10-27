@@ -9,8 +9,7 @@ import {
 import { join } from "node:path";
 import { loadConfig, type Config, type Rubric } from "./config.ts";
 import { loadDna } from "./dna.ts";
-import { loadCatalogue } from "./catalogue.ts";
-import { loadGuidance } from "./guidance.ts";
+import type { CatalogueEntry } from "./catalogue.ts";
 import { isValidId, isoDate } from "./ids.ts";
 import { uniqueId, STATE_FILE } from "./loop.ts";
 import { chat } from "./openrouter.ts";
@@ -78,7 +77,8 @@ export interface Signals {
 /** Everything the artist has "said" through the gate since `sinceIso`. */
 export function collectSignals(cfg: Config, sinceIso: string): Signals {
   const sinceDate = sinceIso.slice(0, 10);
-  const guidance = parseGuidanceEntries(loadGuidance()).filter((g) => g.date > sinceDate);
+  const guidanceText = existsSync(cfg.abs.guidance) ? readFileSync(cfg.abs.guidance, "utf8") : "";
+  const guidance = parseGuidanceEntries(guidanceText).filter((g) => g.date > sinceDate);
 
   const refinements: RefinementSignal[] = [];
   for (const root of [cfg.abs.pending, cfg.abs.published, cfg.abs.rejected]) {
@@ -94,7 +94,14 @@ export function collectSignals(cfg: Config, sinceIso: string): Signals {
   }
 
   // Candidate ids start with their date, so the catalogue carries a timeline.
-  const decided = loadCatalogue().filter((c) => String(c.id).slice(0, 10) > sinceDate);
+  let catalogue: CatalogueEntry[] = [];
+  try {
+    const raw = JSON.parse(readFileSync(cfg.abs.catalogue, "utf8")) as unknown;
+    if (Array.isArray(raw)) catalogue = raw as CatalogueEntry[];
+  } catch {
+    // no catalogue yet — nothing decided
+  }
+  const decided = catalogue.filter((c) => String(c.id).slice(0, 10) > sinceDate);
   return {
     guidance,
     refinements,
@@ -273,6 +280,20 @@ export function listPendingAmendments(cfg: Config): AmendmentItem[] {
   return items;
 }
 
+/** Every decided petition (accepted or declined), newest first. */
+export function listArchivedAmendments(cfg: Config): AmendmentItem[] {
+  if (!cfg.abs?.amendments) return [];
+  const items: AmendmentItem[] = [];
+  for (const id of listIn(archiveRoot(cfg)).reverse()) {
+    const dir = join(archiveRoot(cfg), id);
+    const record = readAmendmentRecord(dir);
+    if (!record) continue;
+    const read = (f: string): string => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), "utf8") : "");
+    items.push({ id, record, rationale: read(PROPOSAL_FILE), proposedDna: read(PROPOSED_DNA_FILE) });
+  }
+  return items;
+}
+
 /** The moment up to which signals have already been considered by any petition. */
 export function latestSignalsThrough(cfg: Config): string {
   let latest = "1970-01-01T00:00:00.000Z";
@@ -294,6 +315,17 @@ export function rejectedPetitionNotes(cfg: Config, limit = 5): string[] {
     if (notes.length >= limit) break;
   }
   return notes;
+}
+
+/** The full petition task: the signals, plus the notes of petitions the artist declined. */
+export function amendmentTask(cfg: Config, signals: Signals): string {
+  const pastNotes = rejectedPetitionNotes(cfg);
+  return (
+    buildAmendTask(signals, cfg.rubric) +
+    (pastNotes.length
+      ? `\n\nThe artist has previously REJECTED these petitions — do not re-propose what they turned down:\n${pastNotes.map((s) => `- ${s}`).join("\n")}`
+      : "")
+  );
 }
 
 // ── The petition flow (integration) ──────────────────────────────────────────
@@ -339,18 +371,13 @@ export async function proposeAmendment(
 
   const currentDna = loadDna();
   const model = cfg.amendments.model || cfg.models.generator;
-  const pastNotes = rejectedPetitionNotes(cfg);
-  const task =
-    buildAmendTask(signals, cfg.rubric) +
-    (pastNotes.length
-      ? `\n\nThe artist has previously REJECTED these petitions — do not re-propose what they turned down:\n${pastNotes.map((s) => `- ${s}`).join("\n")}`
-      : "");
   const { content, usage } = await chat({
     model,
     system: buildAmendSystemPrompt(currentDna),
-    user: task,
+    user: amendmentTask(cfg, signals),
     temperature: 0.4,
     maxTokens: cfg.generation.maxTokens,
+    purpose: "amend",
   });
   const costUsd = await resolveCostUsd(model, usage);
   meter.add(costUsd);

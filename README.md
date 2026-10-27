@@ -54,6 +54,7 @@ npm run seed                       # optional: seeds catalogue.json (from identi
 npm test                           # dependency-less node:test suite
 npm run once                       # one generate → jury → (maybe) notify cycle
 npm run dashboard                  # the approval gateway, http://localhost:4737
+npm run admin                      # the read-only admin console, http://localhost:4747
 ```
 
 Going autonomous (launchd) and publishing (any static host / Vercel) are
@@ -71,8 +72,9 @@ documented in [`ops/DAEMON.md`](ops/DAEMON.md) and [`ops/DEPLOY.md`](ops/DEPLOY.
 | `thresholds` | weighted-total cutoffs for `strong` / `borderline` (else reject) |
 | `amendments` | the self-amending DNA: `enabled`, `minSignals` (new signals before the agent may petition), `model` (empty = generator model) |
 | `interval`, `workBudget`, `costFuse` | wake schedule, per-wake time budget, $ ceilings per wake/day |
-| `paths` | DNA, catalogue, guidance, and lifecycle directories |
+| `paths` | DNA, catalogue, guidance, lifecycle directories, and the `usage` ledger (default `logs/usage.jsonl`) |
 | `dashboard` | port + the hostname used in notification links (e.g. a tailnet host) |
+| `admin` | `port` of the read-only admin console (default 4747; always bound to 127.0.0.1) |
 | `email.to` | notification recipient (empty = console log) |
 | `git` | remote/branch and whether wakes auto-push. Ships as `push: false`; flip it to `true` once the agent lives in **your** repo and you want every candidate pushed (that also makes approvals trigger a site deploy) |
 | `site` | title/lede/footer of the assembled public catalogue page |
@@ -116,6 +118,58 @@ dashboard as a colorized diff with **Ratify** / **Decline** (+note) buttons.
   never touch the rubric anchors wired to config), fuse-metered, and checked
   after each wake. Force one anytime with `npm run amend`.
 
+## The admin console
+
+hylon has three web interfaces:
+
+| Interface | Command | For | Reachable from |
+|---|---|---|---|
+| Public catalogue | `npm run build:site` → any static host | visitors: the approved works | the web |
+| Approval gateway | `npm run dashboard` (or the daemon) | the artist: approve / reject / refine / ratify | localhost or your tailnet |
+| **Admin console** | `npm run admin` | the operator: what is the DNA, which model does what | **127.0.0.1 only** |
+
+The admin console (`src/admin.ts`, http://localhost:4747) is **read-only**: it
+never writes the DNA, the config, or the workspace — ratifying a petition stays
+the only path that rewrites `identity/DNA.md`. It re-reads everything on each
+request, so config edits show up on reload.
+
+- **Overview** — the DNA's essence and version, the model roster with a fitness
+  light per role, today's spend against the fuse, works per lifecycle state, the
+  daemon (running? when does it wake next? is its gateway port taken by another
+  agent?), the environment, and a ranked *needs attention* list.
+- **DNA** — the document rendered with a table of contents, its frontmatter and
+  principles, and **the rubric as the harness reads it**: every gate and scored
+  dimension cross-checked between the DNA and `agent.config.json` (undefined
+  gates, drifted weights, stated thresholds that no longer match), how often each
+  gate fails in practice, the mean score per dimension, and a dot plot of where
+  juried works land against the reject / borderline / strong zones.
+- **History** — the DNA's timeline: every commit that touched it, every
+  petition (ratified, declined with your note, pending), any revision diffed
+  against today's DNA, the signal count toward the next petition, and the
+  guidance file with the entries the generator actually reads marked.
+- **Models** — *who does what*: generate, refine, grade (each juror), draft
+  petitions — each with the model, when it's called, and the call shape
+  (temperature, tools, JSON mode, max_tokens). Per role: OpenRouter catalogue
+  facts and fitness checks (tool calling for the agentic generator, JSON mode for
+  jurors, unsupported temperature, max_tokens over the model's limit, context
+  share, expiry dates), plus the harness invariants (two vendors, panel parity,
+  duplicate jurors). Then what it has cost (30-day spend by purpose, calls /
+  tokens / latency / upstream provider per model), **the jury's record** (each
+  juror's verdict mix, dissents from its panel, and agreement with your own
+  decisions at the gate), and the roster's history from git. `/model?id=…`
+  checks any OpenRouter model's fitness for each role before you configure it.
+- **Prompts** — exactly what each model is told, assembled by the harness's own
+  prompt builders from today's DNA, catalogue and guidance, with token
+  estimates against each model's context.
+- **Config** — the effective config (defaults marked), paths, vendored
+  libraries, and the environment (key masked; OpenRouter's usage/limit for it).
+
+JSON versions live at `/api/overview.json`, `/api/models.json`, `/api/dna.json`.
+Cost history comes from the **usage ledger**: every OpenRouter call appends one
+line to `logs/usage.jsonl` (model, purpose, tokens, cost, latency, provider) —
+local and gitignored, never read by either agent. The OpenRouter model catalogue
+is cached in `.cache/` so the console still answers offline.
+
 ## Invariants (kept from vana)
 
 - **The hard gate is sacred** — nothing reaches `published/` without your click.
@@ -128,6 +182,8 @@ dashboard as a colorized diff with **Ratify** / **Decline** (+note) buttons.
   may *petition* to amend it from your accumulated decisions, but ratification
   at the gate is the sole code path that touches `identity/DNA.md`.
 - **The budget is a fuse, not a target.**
+- **The admin console only reads.** It is an instrument panel, not a second
+  control surface — every decision stays at the gate.
 
 The full as-built design is in [ARCHITECTURE.md](ARCHITECTURE.md); the build
 log is in [PROGRESS.md](PROGRESS.md).

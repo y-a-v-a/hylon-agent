@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import {
@@ -9,6 +10,7 @@ import {
   type ToolDef,
 } from "./openrouter.ts";
 import { resolveCostUsd } from "./cost.ts";
+import type { Purpose } from "./usage.ts";
 
 // A minimal file-tool agent loop over OpenRouter tool calling. This restores
 // the agentic behavior vana got from the Claude Agent SDK — the model writes
@@ -138,6 +140,8 @@ export interface AgentLoopOptions {
   maxTurns?: number;
   temperature?: number;
   maxTokens?: number;
+  /** Ledger tag for every turn of this loop (e.g. "generate" or "refine"). */
+  purpose?: Purpose;
   /** Injectable for tests; defaults to the real OpenRouter chatTurn. */
   transport?: Transport;
 }
@@ -171,6 +175,8 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
 
   let costUsd = 0;
   let finalText: string | null = null;
+  // One run id for every turn, so the ledger can tell turns from generations.
+  const run = randomUUID().slice(0, 8);
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     const { message, usage } = await transport({
@@ -179,6 +185,8 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<AgentLoopRes
       tools: FILE_TOOLS,
       temperature: opts.temperature,
       maxTokens: opts.maxTokens,
+      purpose: opts.purpose,
+      run,
     });
     costUsd += await resolveCostUsd(opts.model, usage);
     messages.push(message);

@@ -14,6 +14,7 @@
     "once": "tsx src/loop.ts once",
     "amend": "tsx src/amend.ts",
     "dashboard": "tsx src/dashboard.ts",
+    "admin": "tsx src/admin.ts",
     "orphans": "tsx src/orphans.ts",
     "build:site": "tsx src/site.ts",
     "status": "bash ops/status.sh",

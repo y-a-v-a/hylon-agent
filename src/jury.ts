@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { loadConfig, maxWeighted, normalizeJuryModels, type Rubric } from "./config.ts";
 import { loadDna } from "./dna.ts";
@@ -274,9 +275,18 @@ export async function juryCandidate(
     cfg.rubric,
     Object.keys(cfg.technologies.libraries),
   );
+  const run = randomUUID().slice(0, 8); // one ledger run per panel sitting
   const results = await Promise.all(
     models.map(async (model) => {
-      const { content, usage } = await chat({ model, system, user: task, json: true, temperature: 0.2 });
+      const { content, usage } = await chat({
+        model,
+        system,
+        user: task,
+        json: true,
+        temperature: 0.2,
+        purpose: "jury",
+        run,
+      });
       const opinion = assembleVerdict(
         workId,
         parseJuryModelResponse(content, cfg.rubric),
