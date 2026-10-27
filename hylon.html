@@ -609,6 +609,23 @@
   complete, and recoverable — where the dashboard can send it back through the jury with one
   click.</p>
 
+  <h3>The admin console: watching the machine</h3>
+
+  <p>hylon has three web faces. The <strong>public catalogue</strong> shows what was approved;
+  the <strong>approval gateway</strong> is where the artist decides; and the <strong>admin
+  console</strong> (<code>npm run admin</code>, local only) is where the operator looks under the
+  hood without touching anything. It answers two questions. <em>What is the DNA right now?</em> —
+  the document rendered, its principles, the rubric as the harness actually reads it (with every
+  place the DNA and <code>agent.config.json</code> disagree), where juried works land against the
+  thresholds, and the DNA’s whole history of commits and petitions. <em>Which model does what?</em>
+  — each OpenRouter model in its role, called the way the harness calls it, checked against
+  OpenRouter’s catalogue for fitness (tool calling for the generator, JSON mode for jurors,
+  context, expiry), with its real cost from a per-call usage ledger and each juror’s record of
+  dissent and agreement with the artist.</p>
+
+  <p>The console is read-only on purpose. Ratifying a petition is the only path that rewrites the
+  DNA, and a convenient edit box would be a second one.</p>
+
   <h2>7 · Why this shape</h2>
 
   <p>The architecture keeps four promises, and everything above serves one of them:</p>
